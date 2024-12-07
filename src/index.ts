@@ -182,6 +182,21 @@ const ADD_COMMENT_TOOL: Tool = {
   }
 };
 
+const GET_COMMENTS_TOOL: Tool = {
+  name: "todoist_get_comments",
+  description: "Get all comments for a task by searching for it by name",
+  inputSchema: {
+    type: "object",
+    properties: {
+      task_name: {
+        type: "string",
+        description: "Name/content of the task to search for and get comments from"
+      }
+    },
+    required: ["task_name"]
+  }
+};
+
 // Server implementation
 const server = new Server(
   {
@@ -308,6 +323,17 @@ function isAddCommentArgs(args: unknown): args is {
   );
 }
 
+function isGetCommentsArgs(args: unknown): args is {
+  task_name: string;
+} {
+  return (
+    typeof args === "object" &&
+    args !== null &&
+    "task_name" in args &&
+    typeof (args as { task_name: string }).task_name === "string"
+  );
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -318,7 +344,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     COMPLETE_TASK_TOOL, 
     UPDATE_LABELS_TOOL,
     GET_PROJECTS_TOOL,
-    ADD_COMMENT_TOOL
+    ADD_COMMENT_TOOL,
+    GET_COMMENTS_TOOL
   ],
 }));
 
@@ -582,6 +609,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{ 
           type: "text", 
           text: `Added comment to task "${matchingTask.content}":\n${comment.content}` 
+        }],
+        isError: false,
+      };
+    }
+
+    if (name === "todoist_get_comments") {
+      if (!isGetCommentsArgs(args)) {
+        throw new Error("Invalid arguments for todoist_get_comments");
+      }
+
+      // First, search for the task
+      const tasks = await todoistClient.getTasks();
+      const matchingTask = tasks.find(task => 
+        task.content.toLowerCase().includes(args.task_name.toLowerCase())
+      );
+
+      if (!matchingTask) {
+        return {
+          content: [{ 
+            type: "text", 
+            text: `Could not find a task matching "${args.task_name}"` 
+          }],
+          isError: true,
+        };
+      }
+
+      // Get the comments
+      const comments = await todoistClient.getComments({
+        taskId: matchingTask.id
+      });
+      
+      if (comments.length === 0) {
+        return {
+          content: [{ 
+            type: "text", 
+            text: `No comments found for task "${matchingTask.content}" 
+`          }],
+          isError: false,
+        };
+      }
+
+      const commentList = comments.map(comment => 
+        `- ${comment.content}\n  Posted: ${comment.postedAt}`
+      ).join('\n\n');
+
+      return {
+        content: [{ 
+          type: "text", 
+          text: `Comments for task "${matchingTask.content}":\n\n${commentList}` 
         }],
         isError: false,
       };
