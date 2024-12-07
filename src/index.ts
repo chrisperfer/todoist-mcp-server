@@ -336,7 +336,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       const taskList = filteredTasks.map(task => 
-        `- project id:${task.project_id} ${task.content}${task.description ? `\n  Description: ${task.description}` : ''}${task.due ? `\n  Due: ${task.due.string}` : ''}${task.priority ? `\n  Priority: ${task.priority}` : ''}`
+        `- project id:${task.projectId} ${task.content}${task.description ? `\n  Description: ${task.description}` : ''}${task.due ? `\n  Due: ${task.due.string}` : ''}${task.priority ? `\n  Priority: ${task.priority}` : ''}`
       ).join('\n\n');
       
       return {
@@ -504,7 +504,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       const projectList = filteredProjects.map(project => 
-        `- project id:${project.id} ${project.name}${project.parent_Id ? " (sub-project)" : ""}${project.isFavorite ? " ⭐" : ""}`
+        `- project id:${project.id} ${project.name}${project.parentId ? " (sub-project)" : ""}${project.isFavorite ? " ⭐" : ""}`
       ).join('\n');
 
       return {
