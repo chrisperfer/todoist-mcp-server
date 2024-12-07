@@ -13,7 +13,7 @@ import { TodoistApi } from "@doist/todoist-api-typescript";
 // Define tools
 const CREATE_TASK_TOOL: Tool = {
   name: "todoist_create_task",
-  description: "Create a new task in Todoist with optional description, due date, and priority",
+  description: "Create a new task in Todoist with optional description, due date, priority, and parent task",
   inputSchema: {
     type: "object",
     properties: {
@@ -33,6 +33,10 @@ const CREATE_TASK_TOOL: Tool = {
         type: "number",
         description: "Task priority from 1 (normal) to 4 (urgent) (optional)",
         enum: [1, 2, 3, 4]
+      },
+      parent_task_name: {
+        type: "string",
+        description: "Name of the parent task to create this as a subtask (optional)"
       }
     },
     required: ["content"]
@@ -226,6 +230,7 @@ function isCreateTaskArgs(args: unknown): args is {
   description?: string;
   due_string?: string;
   priority?: number;
+  parent_task_name?: string;
 } {
   return (
     typeof args === "object" &&
@@ -361,16 +366,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!isCreateTaskArgs(args)) {
         throw new Error("Invalid arguments for todoist_create_task");
       }
+
+      // If parent task name is provided, find the parent task first
+      let parentId: string | undefined;
+      if (args.parent_task_name) {
+        const tasks = await todoistClient.getTasks();
+        const parentTask = tasks.find(task => 
+          task.content.toLowerCase().includes(args.parent_task_name!.toLowerCase())
+        );
+
+        if (!parentTask) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: `Could not find a parent task matching "${args.parent_task_name}"` 
+            }],
+            isError: true,
+          };
+        }
+        parentId = parentTask.id;
+      }
+
       const task = await todoistClient.addTask({
         content: args.content,
         description: args.description,
         dueString: args.due_string,
-        priority: args.priority
+        priority: args.priority,
+        parentId: parentId
       });
+
       return {
         content: [{ 
           type: "text", 
-          text: `Task created:\nTitle: ${task.content}${task.description ? `\nDescription: ${task.description}` : ''}${task.due ? `\nDue: ${task.due.string}` : ''}${task.priority ? `\nPriority: ${task.priority}` : ''}` 
+          text: `Task created:\nTitle: ${task.content}${task.description ? `\nDescription: ${task.description}` : ''}${task.due ? `\nDue: ${task.due.string}` : ''}${task.priority ? `\nPriority: ${task.priority}` : ''}${parentId ? `\nParent Task ID: ${parentId}` : ''}` 
         }],
         isError: false,
       };
