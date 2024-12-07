@@ -8,6 +8,7 @@ import {
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { TodoistApi } from "@doist/todoist-api-typescript";
+import { process } from 'node:process';
 
 // Define tools
 const CREATE_TASK_TOOL: Tool = {
@@ -162,6 +163,25 @@ const GET_PROJECTS_TOOL: Tool = {
   }
 };
 
+const ADD_COMMENT_TOOL: Tool = {
+  name: "todoist_add_comment",
+  description: "Add a comment to a task by searching for it by name",
+  inputSchema: {
+    type: "object",
+    properties: {
+      task_name: {
+        type: "string",
+        description: "Name/content of the task to search for and comment on"
+      },
+      content: {
+        type: "string",
+        description: "The content of the comment to add"
+      }
+    },
+    required: ["task_name", "content"]
+  }
+};
+
 // Server implementation
 const server = new Server(
   {
@@ -274,6 +294,20 @@ function isGetProjectsArgs(args: unknown): args is {
   );
 }
 
+function isAddCommentArgs(args: unknown): args is {
+  task_name: string;
+  content: string;
+} {
+  return (
+    typeof args === "object" &&
+    args !== null &&
+    "task_name" in args &&
+    typeof (args as { task_name: string }).task_name === "string" &&
+    "content" in args &&
+    typeof (args as { content: string }).content === "string"
+  );
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -283,7 +317,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     DELETE_TASK_TOOL, 
     COMPLETE_TASK_TOOL, 
     UPDATE_LABELS_TOOL,
-    GET_PROJECTS_TOOL
+    GET_PROJECTS_TOOL,
+    ADD_COMMENT_TOOL
   ],
 }));
 
@@ -511,6 +546,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{ 
           type: "text", 
           text: projectList || "No projects found" 
+        }],
+        isError: false,
+      };
+    }
+
+    if (name === "todoist_add_comment") {
+      if (!isAddCommentArgs(args)) {
+        throw new Error("Invalid arguments for todoist_add_comment");
+      }
+
+      // First, search for the task
+      const tasks = await todoistClient.getTasks();
+      const matchingTask = tasks.find(task => 
+        task.content.toLowerCase().includes(args.task_name.toLowerCase())
+      );
+
+      if (!matchingTask) {
+        return {
+          content: [{ 
+            type: "text", 
+            text: `Could not find a task matching "${args.task_name}"` 
+          }],
+          isError: true,
+        };
+      }
+
+      // Add the comment
+      const comment = await todoistClient.addComment({
+        taskId: matchingTask.id,
+        content: args.content
+      });
+      
+      return {
+        content: [{ 
+          type: "text", 
+          text: `Added comment to task "${matchingTask.content}":\n${comment.content}` 
         }],
         isError: false,
       };
