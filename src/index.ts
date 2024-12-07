@@ -148,6 +148,20 @@ const UPDATE_LABELS_TOOL: Tool = {
   }
 };
 
+const GET_PROJECTS_TOOL: Tool = {
+  name: "todoist_get_projects",
+  description: "Get a list of all projects",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name_contains: {
+        type: "string",
+        description: "Optional filter to search for projects containing this text in their name"
+      }
+    }
+  }
+};
+
 // Server implementation
 const server = new Server(
   {
@@ -250,9 +264,27 @@ function isUpdateLabelsArgs(args: unknown): args is {
   );
 }
 
+function isGetProjectsArgs(args: unknown): args is {
+  name_contains?: string;
+} {
+  return (
+    typeof args === "object" &&
+    args !== null &&
+    (!("name_contains" in args) || typeof (args as any).name_contains === "string")
+  );
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [CREATE_TASK_TOOL, GET_TASKS_TOOL, UPDATE_TASK_TOOL, DELETE_TASK_TOOL, COMPLETE_TASK_TOOL, UPDATE_LABELS_TOOL],
+  tools: [
+    CREATE_TASK_TOOL, 
+    GET_TASKS_TOOL, 
+    UPDATE_TASK_TOOL, 
+    DELETE_TASK_TOOL, 
+    COMPLETE_TASK_TOOL, 
+    UPDATE_LABELS_TOOL,
+    GET_PROJECTS_TOOL
+  ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -304,7 +336,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       const taskList = filteredTasks.map(task => 
-        `- ${task.content}${task.description ? `\n  Description: ${task.description}` : ''}${task.due ? `\n  Due: ${task.due.string}` : ''}${task.priority ? `\n  Priority: ${task.priority}` : ''}`
+        `- project id:${task.project_id} ${task.content}${task.description ? `\n  Description: ${task.description}` : ''}${task.due ? `\n  Due: ${task.due.string}` : ''}${task.priority ? `\n  Priority: ${task.priority}` : ''}`
       ).join('\n\n');
       
       return {
@@ -451,6 +483,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{ 
           type: "text", 
           text: `Updated labels for task "${matchingTask.content}":\nLabels: ${updatedTask.labels.join(", ") || "none"}` 
+        }],
+        isError: false,
+      };
+    }
+
+    if (name === "todoist_get_projects") {
+      if (!isGetProjectsArgs(args)) {
+        throw new Error("Invalid arguments for todoist_get_projects");
+      }
+
+      const projects = await todoistClient.getProjects();
+      
+      // Apply name filter if provided
+      let filteredProjects = projects;
+      if (args.name_contains) {
+        filteredProjects = projects.filter(project => 
+          project.name.toLowerCase().includes(args.name_contains!.toLowerCase())
+        );
+      }
+
+      const projectList = filteredProjects.map(project => 
+        `- project id:${project.id} ${project.name}${project.parent_Id ? " (sub-project)" : ""}${project.isFavorite ? " ⭐" : ""}`
+      ).join('\n');
+
+      return {
+        content: [{ 
+          type: "text", 
+          text: projectList || "No projects found" 
         }],
         isError: false,
       };
