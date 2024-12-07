@@ -128,6 +128,26 @@ const COMPLETE_TASK_TOOL: Tool = {
   }
 };
 
+const UPDATE_LABELS_TOOL: Tool = {
+  name: "todoist_update_labels",
+  description: "Update the labels on a task by searching for it by name",
+  inputSchema: {
+    type: "object",
+    properties: {
+      task_name: {
+        type: "string",
+        description: "Name/content of the task to search for and update"
+      },
+      labels: {
+        type: "array",
+        items: { type: "string" },
+        description: "Array of label names to set on the task"
+      }
+    },
+    required: ["task_name", "labels"]
+  }
+};
+
 // Server implementation
 const server = new Server(
   {
@@ -215,9 +235,24 @@ function isCompleteTaskArgs(args: unknown): args is {
   );
 }
 
+function isUpdateLabelsArgs(args: unknown): args is {
+  task_name: string;
+  labels: string[];
+} {
+  return (
+    typeof args === "object" &&
+    args !== null &&
+    "task_name" in args &&
+    typeof (args as { task_name: string }).task_name === "string" &&
+    "labels" in args &&
+    Array.isArray((args as { labels: string[] }).labels) &&
+    (args as { labels: string[] }).labels.every(label => typeof label === "string")
+  );
+}
+
 // Tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [CREATE_TASK_TOOL, GET_TASKS_TOOL, UPDATE_TASK_TOOL, DELETE_TASK_TOOL, COMPLETE_TASK_TOOL],
+  tools: [CREATE_TASK_TOOL, GET_TASKS_TOOL, UPDATE_TASK_TOOL, DELETE_TASK_TOOL, COMPLETE_TASK_TOOL, UPDATE_LABELS_TOOL],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -381,6 +416,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         content: [{ 
           type: "text", 
           text: `Successfully completed task: "${matchingTask.content}"` 
+        }],
+        isError: false,
+      };
+    }
+
+    if (name === "todoist_update_labels") {
+      if (!isUpdateLabelsArgs(args)) {
+        throw new Error("Invalid arguments for todoist_update_labels");
+      }
+
+      // First, search for the task
+      const tasks = await todoistClient.getTasks();
+      const matchingTask = tasks.find(task => 
+        task.content.toLowerCase().includes(args.task_name.toLowerCase())
+      );
+
+      if (!matchingTask) {
+        return {
+          content: [{ 
+            type: "text", 
+            text: `Could not find a task matching "${args.task_name}"` 
+          }],
+          isError: true,
+        };
+      }
+
+      // Update the task's labels
+      const updatedTask = await todoistClient.updateTask(matchingTask.id, {
+        labels: args.labels
+      });
+      
+      return {
+        content: [{ 
+          type: "text", 
+          text: `Updated labels for task "${matchingTask.content}":\nLabels: ${updatedTask.labels.join(", ") || "none"}` 
         }],
         isError: false,
       };
