@@ -60,6 +60,25 @@ async function listTasks(options = {}) {
                 }
             }
 
+            // Filter tasks by labels if specified
+            if (options.labels && options.labels.length > 0) {
+                filteredTasks = filteredTasks.filter(task => {
+                    // Convert task labels to lowercase for case-insensitive comparison
+                    const taskLabels = new Set((task.labels || []).map(label => 
+                        label.toLowerCase().replace(/^goals:\s*/i, '')  // Remove 'goals:' prefix if present
+                    ));
+                    // Check if task has all specified labels
+                    return options.labels.every(label => 
+                        taskLabels.has(label.toLowerCase())
+                    );
+                });
+
+                if (filteredTasks.length === 0) {
+                    console.log(`No tasks found with labels: @${options.labels.join(', @')}`);
+                    return;
+                }
+            }
+
             // Sort tasks by project and due date
             filteredTasks.sort((a, b) => {
                 const projectCompare = (a.projectId || "").localeCompare(b.projectId || "");
@@ -72,10 +91,11 @@ async function listTasks(options = {}) {
             });
 
             if (options.json) {
-                // Add project path to each task
+                // Add project path and format labels to each task
                 const tasksWithProject = filteredTasks.map(task => ({
                     ...task,
-                    projectPath: getProjectPath(task.projectId)
+                    projectPath: getProjectPath(task.projectId),
+                    labels: task.labels || []  // Ensure labels is always an array
                 }));
                 console.log(JSON.stringify(tasksWithProject, null, 2));
                 return;
@@ -88,7 +108,7 @@ async function listTasks(options = {}) {
                     console.log(`  Project: ${getProjectPath(task.projectId)}`);
                     if (task.due) console.log(`  Due: ${task.due.date}${task.due.datetime ? ' ' + task.due.datetime : ''}`);
                     if (task.priority) console.log(`  Priority: ${task.priority}`);
-                    if (task.labels && task.labels.length) console.log(`  Labels: ${task.labels.join(', ')}`);
+                    if (task.labels && task.labels.length) console.log(`  Labels: @${task.labels.join(', @')}`);
                     if (task.description) console.log(`  Description: ${task.description}`);
                     console.log(`  URL: ${task.url}`);
                     console.log(''); // Empty line between tasks
@@ -96,7 +116,7 @@ async function listTasks(options = {}) {
                 return;
             }
 
-            // Default output: task info with priority, deadline, due date and project
+            // Default output: task info with priority, deadline, due date, project and labels
             filteredTasks.forEach(task => {
                 let details = [];
                 
@@ -119,6 +139,11 @@ async function listTasks(options = {}) {
                 // Add project name
                 const projectPath = getProjectPath(task.projectId);
                 details.push(`[${projectPath}]`);
+
+                // Add labels if they exist
+                if (task.labels && task.labels.length > 0) {
+                    details.push(`@${task.labels.join(' @')}`);
+                }
 
                 // Combine all details
                 const detailsStr = details.length > 0 ? ` (${details.join(', ')})` : '';
@@ -149,13 +174,23 @@ async function listTasks(options = {}) {
 const options = {
     json: process.argv.includes('--json'),
     detailed: process.argv.includes('--detailed'),
-    project: null
+    project: null,
+    labels: []
 };
 
 // Get project filter if specified
 const projectIndex = process.argv.indexOf('--project');
 if (projectIndex !== -1 && projectIndex + 1 < process.argv.length) {
     options.project = process.argv[projectIndex + 1];
+}
+
+// Get all label filters
+let labelIndex = process.argv.indexOf('--label');
+while (labelIndex !== -1) {
+    if (labelIndex + 1 < process.argv.length) {
+        options.labels.push(process.argv[labelIndex + 1]);
+    }
+    labelIndex = process.argv.indexOf('--label', labelIndex + 1);
 }
 
 // Run if called directly
