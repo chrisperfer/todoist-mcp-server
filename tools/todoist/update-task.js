@@ -35,6 +35,18 @@ async function updateTask(taskQuery, options = {}) {
                 process.exit(1);
             }
 
+            // Handle task completion
+            if (options.complete) {
+                try {
+                    await api.closeTask(task.id);
+                    console.log(`Task completed: ${task.content}`);
+                    return;
+                } catch (error) {
+                    console.error("Error completing task:", error.message);
+                    process.exit(1);
+                }
+            }
+
             // Prepare update data
             const updateData = {};
 
@@ -139,6 +151,7 @@ async function updateTask(taskQuery, options = {}) {
 const args = process.argv.slice(2);
 const options = {
     json: args.includes('--json'),
+    complete: args.includes('--complete'),
     labels: null,
     addLabels: false,
     removeLabels: false,
