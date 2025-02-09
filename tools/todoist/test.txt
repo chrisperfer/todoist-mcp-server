@@ -1,0 +1,140 @@
+2345979000	* Annual Review
+2345978262	* Evening Review
+	177847188	Process Inboxes
+	177847190	Family
+	177847191	Health
+	177847192	Home
+	177847194	Notes
+2345978621	* Monthly Review
+	177847693	Notes
+2345976364	* Morning Review
+	177844182	Process Inboxes
+	177844166	Family
+	177844177	Health
+	177844544	Home
+	177844162	Notes
+	178816987	General
+2345976257	* Weekly Review
+	178178258	Recurring things that need investment of time
+2341933980	Work » Administration
+2332771153	Adventures
+2330053326	AI
+	179519512	Project Ideas
+	155114239	To Learn
+	179521117	IDEs and Clients and Agenty things
+	179518547	Tools
+	179518860	Claude and MCPs
+	179518999	Google
+	179519229	Models
+	179521686	Open AI
+2345313829	Buy a house?
+2329791616	Work » CPF Module
+	170840897	WP refactoring to support CPF Module
+	159444380	UNINFO
+	170840247	Workflow and Publishing
+	170840011	UI
+	173245400	Data Cleanup
+	175614506	Ideas for later
+	174534772	For December Demo 2
+	176578083	Performance
+2332771133	Create
+	157428902	Photography
+	177872245	Project Ideas
+2345254136	Darts
+2341933885	Work » Documentation and Research
+2332771149	Eat
+2332771178	Electric Car
+2332770980	Family
+2348622678	Flooby
+	182503812	SECTION1
+	182504177	SECTION2
+2348629637	FLOOBY2
+2346946567	Work » Forward Ho
+2332770925	Friends
+2330032423	Work » General
+	179525261	AI
+	172860680	Documentation of PIRES
+	172860480	Technical Debt
+	172861089	Menu
+	172861133	Component Ideas
+	172861500	Grid and Crud
+	172861897	Bugs
+	172861919	Someday
+	178661238	Bring to Work
+2330175304	Health
+	155114714	Seriously Neglected and important
+2347057695	Heather CA Trip 🐻 🏄🏽‍♂️ 🌊 🌮
+2330176856	Home
+2241816109	Inbox
+2332771076	IT
+2343379909	Jasper Trip
+	179518006	Confirmations
+	179518222	Things still to plan
+	180712422	Before Leaving
+	180712414	Packing
+2332770617	Learn
+2332771130	Leisure
+2332771135	Media
+2332771814	Mēmoire
+2330057239	Money
+	150202950	Save Money
+	150203172	University
+	150203892	Car Purchase
+	150403426	Insurance
+2334898822	Monteleone
+2348198220	oracle tool use
+2332771073	Organize
+	162672168	Digestion of stuff from storage
+2343093007	Organize Your Home
+	172858729	How to use this template 🧹
+	172858730	Before organizing your home
+	172858731	General organizing principles
+	172858732	Kitchen
+	172858733	Living Room _ Family Room
+	172858734	Bedrooms
+	172858735	Bathrooms
+	172858736	Home Office
+	172858737	Back Yard
+	172858738	Garage
+	172858739	Laundry Room
+	172858740	Linen and Storage Closets
+	172858741	Hallways
+2341941124	Work » Permissions and Security
+2345957782	pkms
+2343092196	Project Tracker
+	172857163	How to Use This Template
+	172857164	Dates and resources
+	172857166	Project admin
+	172857167	Phase 1 - Define the problem and solution 🧠
+	172857169	Phase 2 - Preparation 📖
+	172857170	Phase 3 - Execution 🔨
+	172857171	Phase 4 - Launch 🚀
+	172857172	Phase 5 - Follow-up 🚚
+2347852203	react_test
+2339837015	Repeating
+2329816498	Work » Reporting
+	149893888	Technical Enhancements and Debugging
+	149893894	User Interface and Experience
+	149893900	Reporting Features
+	149893921	Collaboration and Feedback
+	149893905	Data Management
+2348624426	Flooby » Shmooby
+2332771139	Shopping
+2348543668	Skynet
+2346665747	Work » Test-icle
+	179035567	Phase 1 - POC
+	179035670	Phase 2 - Entity Service
+	179035594	Phase 3 - Refinement
+	179035629	Phase 4 - full WP Coverage
+2341941140	Work » Testing and Performance
+2341941244	Work » UI
+2338064499	University
+2333101912	Weekly Review sample
+	155427382	How to use the Weekly Review template 👋
+	155427383	Before my review 🧽
+	155427384	The weekly review 🏗
+	155427385	After my review 🤔
+2343238981	wishlist
+2348624299	Flooby » Wooby
+2330031913	Work
+2330031949	Work » WP/YER/FAOR
