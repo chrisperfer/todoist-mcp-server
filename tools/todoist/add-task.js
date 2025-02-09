@@ -54,10 +54,32 @@ async function addTask(content, options = {}) {
                 }
             }
 
+            // If parent task is specified, find its ID
+            let parentId = null;
+            if (options.parent) {
+                const tasks = await api.getTasks();
+                const parentTask = tasks.find(t => 
+                    t.id === options.parent || 
+                    t.content.toLowerCase().includes(options.parent.toLowerCase())
+                );
+
+                if (parentTask) {
+                    parentId = parentTask.id;
+                    // If no project specified, use parent's project
+                    if (!projectId) {
+                        projectId = parentTask.projectId;
+                    }
+                } else {
+                    console.error(`Error: Parent task "${options.parent}" not found`);
+                    process.exit(1);
+                }
+            }
+
             // Create task object
             const taskData = {
                 content: content,
                 ...(projectId && { projectId }),
+                ...(parentId && { parentId }),
                 ...(options.priority && { priority: parseInt(options.priority) }),
                 ...(options.dueString && { dueString: options.dueString }),
                 ...(options.dueDate && { dueDate: options.dueDate }),
@@ -74,6 +96,7 @@ async function addTask(content, options = {}) {
                 console.log(`Task created: ${task.id}`);
                 console.log(`Content: ${task.content}`);
                 if (projectId) console.log(`Project ID: ${projectId}`);
+                if (parentId) console.log(`Parent Task ID: ${parentId}`);
                 if (task.due) console.log(`Due: ${task.due.date}${task.due.datetime ? ' ' + task.due.datetime : ''}`);
                 if (task.priority) console.log(`Priority: ${task.priority}`);
                 if (task.labels && task.labels.length) console.log(`Labels: @${task.labels.join(' @')}`);
@@ -95,6 +118,7 @@ const args = process.argv.slice(2);
 const options = {
     json: args.includes('--json'),
     project: null,
+    parent: null,
     priority: null,
     dueString: null,
     dueDate: null,
@@ -113,6 +137,9 @@ while (i !== -1 && i < args.length) {
     switch (args[i]) {
         case '--project':
             if (i + 1 < args.length) options.project = args[++i];
+            break;
+        case '--parent':
+            if (i + 1 < args.length) options.parent = args[++i];
             break;
         case '--priority':
             if (i + 1 < args.length) options.priority = args[++i];
