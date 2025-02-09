@@ -14,8 +14,11 @@ async function listLabels(options = {}) {
         const api = new TodoistApi(token);
         
         try {
-            // Get all personal labels
-            const labels = await api.getLabels();
+            // Get all personal labels and tasks
+            const [labels, tasks] = await Promise.all([
+                api.getLabels(),
+                api.getTasks()
+            ]);
             
             // Get shared labels if needed for the default view
             let sharedLabels = [];
@@ -28,11 +31,26 @@ async function listLabels(options = {}) {
                 return;
             }
 
+            // Count tasks for each label
+            const labelCounts = new Map();
+            tasks.forEach(task => {
+                if (task.labels) {
+                    task.labels.forEach(labelName => {
+                        labelCounts.set(labelName, (labelCounts.get(labelName) || 0) + 1);
+                    });
+                }
+            });
+
             // Sort labels by name
             labels.sort((a, b) => a.name.localeCompare(b.name));
 
             if (options.json) {
-                console.log(JSON.stringify(labels, null, 2));
+                // Add task count to each label object
+                const labelsWithCounts = labels.map(label => ({
+                    ...label,
+                    taskCount: labelCounts.get(label.name) || 0
+                }));
+                console.log(JSON.stringify(labelsWithCounts, null, 2));
                 return;
             }
 
@@ -43,6 +61,7 @@ async function listLabels(options = {}) {
                     console.log(`  Color: ${label.color}`);
                     console.log(`  Order: ${label.order}`);
                     console.log(`  Favorite: ${label.isFavorite ? 'Yes' : 'No'}`);
+                    console.log(`  Tasks: ${labelCounts.get(label.name) || 0}`);
                     console.log(''); // Empty line between labels
                 });
                 return;
@@ -54,7 +73,8 @@ async function listLabels(options = {}) {
                 labels.forEach(label => {
                     const favoriteStr = label.isFavorite ? ' ★' : '';
                     const colorStr = label.color !== 'charcoal' ? ` (${label.color})` : '';
-                    console.log(`${label.id}\t${label.name}${favoriteStr}${colorStr}`);
+                    const countStr = `[${labelCounts.get(label.name) || 0} tasks]`;
+                    console.log(`${label.id}\t${label.name}${favoriteStr}${colorStr} ${countStr}`);
                 });
             }
 
@@ -63,7 +83,8 @@ async function listLabels(options = {}) {
                 sharedLabels
                     .sort((a, b) => a.localeCompare(b))
                     .forEach(label => {
-                        console.log(`\t${label}`);
+                        const countStr = `[${labelCounts.get(label) || 0} tasks]`;
+                        console.log(`\t${label} ${countStr}`);
                     });
             }
 
