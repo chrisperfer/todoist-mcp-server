@@ -44,48 +44,107 @@ async function listLabels(options = {}) {
             // Sort labels by name
             labels.sort((a, b) => a.name.localeCompare(b.name));
 
+            // Separate goal labels from other labels
+            const goalLabels = labels.filter(l => l.name.startsWith('Goals:'));
+            const otherLabels = labels.filter(l => !l.name.startsWith('Goals:'));
+
             if (options.json) {
-                // Add task count to each label object
+                // Add task count and metadata to each label object
                 const labelsWithCounts = labels.map(label => ({
                     ...label,
-                    taskCount: labelCounts.get(label.name) || 0
+                    taskCount: labelCounts.get(label.name) || 0,
+                    isGoal: label.name.startsWith('Goals:'),
+                    category: label.name.startsWith('Goals:') ? label.name.split(':')[1].trim() : null
                 }));
                 console.log(JSON.stringify(labelsWithCounts, null, 2));
                 return;
             }
 
             if (options.detailed) {
-                labels.forEach(label => {
-                    console.log(`Label: ${label.name}`);
-                    console.log(`  ID: ${label.id}`);
-                    console.log(`  Color: ${label.color}`);
-                    console.log(`  Order: ${label.order}`);
-                    console.log(`  Favorite: ${label.isFavorite ? 'Yes' : 'No'}`);
-                    console.log(`  Tasks: ${labelCounts.get(label.name) || 0}`);
-                    console.log(''); // Empty line between labels
-                });
+                if (goalLabels.length > 0) {
+                    console.log("\nLife Goals Labels:");
+                    console.log("=================");
+                    goalLabels.forEach(label => {
+                        const taskCount = labelCounts.get(label.name) || 0;
+                        const category = label.name.split(':')[1].trim();
+                        console.log(`Goal Category: ${category}`);
+                        console.log(`  ID: ${label.id}`);
+                        console.log(`  Color: ${label.color}`);
+                        console.log(`  Order: ${label.order}`);
+                        console.log(`  Favorite: ${label.isFavorite ? 'Yes' : 'No'}`);
+                        console.log(`  Active Tasks: ${taskCount}`);
+                        console.log(''); // Empty line between labels
+                    });
+                }
+
+                if (otherLabels.length > 0) {
+                    console.log("\nOther Labels:");
+                    console.log("=============");
+                    otherLabels.forEach(label => {
+                        console.log(`Label: ${label.name}`);
+                        console.log(`  ID: ${label.id}`);
+                        console.log(`  Color: ${label.color}`);
+                        console.log(`  Order: ${label.order}`);
+                        console.log(`  Favorite: ${label.isFavorite ? 'Yes' : 'No'}`);
+                        console.log(`  Tasks: ${labelCounts.get(label.name) || 0}`);
+                        console.log(''); // Empty line between labels
+                    });
+                }
                 return;
             }
 
             // Default output: show both personal and shared labels
             if (labels.length > 0) {
-                console.log("\nPersonal Labels:");
-                labels.forEach(label => {
-                    const favoriteStr = label.isFavorite ? ' ★' : '';
-                    const colorStr = label.color !== 'charcoal' ? ` (${label.color})` : '';
-                    const countStr = `[${labelCounts.get(label.name) || 0} tasks]`;
-                    console.log(`${label.id}\t${label.name}${favoriteStr}${colorStr} ${countStr}`);
-                });
+                if (goalLabels.length > 0) {
+                    console.log("\nLife Goals Labels:");
+                    console.log("=================");
+                    goalLabels.forEach(label => {
+                        const favoriteStr = label.isFavorite ? ' ★' : '';
+                        const colorStr = label.color !== 'charcoal' ? ` (${label.color})` : '';
+                        const countStr = `[${labelCounts.get(label.name) || 0} tasks]`;
+                        const category = label.name.split(':')[1].trim();
+                        console.log(`${label.id}\t${category}${favoriteStr}${colorStr} ${countStr}`);
+                    });
+                }
+
+                if (otherLabels.length > 0) {
+                    console.log("\nOther Labels:");
+                    console.log("=============");
+                    otherLabels.forEach(label => {
+                        const favoriteStr = label.isFavorite ? ' ★' : '';
+                        const colorStr = label.color !== 'charcoal' ? ` (${label.color})` : '';
+                        const countStr = `[${labelCounts.get(label.name) || 0} tasks]`;
+                        console.log(`${label.id}\t${label.name}${favoriteStr}${colorStr} ${countStr}`);
+                    });
+                }
             }
 
             if (sharedLabels.length > 0) {
                 console.log("\nShared Labels:");
-                sharedLabels
-                    .sort((a, b) => a.localeCompare(b))
-                    .forEach(label => {
-                        const countStr = `[${labelCounts.get(label) || 0} tasks]`;
-                        console.log(`\t${label} ${countStr}`);
-                    });
+                console.log("==============");
+                const sharedGoalLabels = sharedLabels.filter(l => l.startsWith('Goals:'));
+                const sharedOtherLabels = sharedLabels.filter(l => !l.startsWith('Goals:'));
+
+                if (sharedGoalLabels.length > 0) {
+                    console.log("\n  Life Goals:");
+                    sharedGoalLabels
+                        .sort((a, b) => a.localeCompare(b))
+                        .forEach(label => {
+                            const countStr = `[${labelCounts.get(label) || 0} tasks]`;
+                            const category = label.split(':')[1].trim();
+                            console.log(`\t${category} ${countStr}`);
+                        });
+                }
+
+                if (sharedOtherLabels.length > 0) {
+                    console.log("\n  Other:");
+                    sharedOtherLabels
+                        .sort((a, b) => a.localeCompare(b))
+                        .forEach(label => {
+                            const countStr = `[${labelCounts.get(label) || 0} tasks]`;
+                            console.log(`\t${label} ${countStr}`);
+                        });
+                }
             }
 
         } catch (apiError) {
