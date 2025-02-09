@@ -7,714 +7,355 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { TodoistApi } from "@doist/todoist-api-typescript";
-//mport { process } from 'node:process';
+import { spawn, ChildProcess } from 'child_process';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-// Define tools
-const CREATE_TASK_TOOL: Tool = {
-  name: "todoist_create_task",
-  description: "Create a new task in Todoist with optional description, due date, priority, and parent task",
-  inputSchema: {
-    type: "object",
-    properties: {
-      content: {
-        type: "string",
-        description: "The content/title of the task"
-      },
-      description: {
-        type: "string",
-        description: "Detailed description of the task (optional)"
-      },
-      due_string: {
-        type: "string",
-        description: "Natural language due date like 'tomorrow', 'next Monday', 'Jan 23' (optional)"
-      },
-      priority: {
-        type: "number",
-        description: "Task priority from 1 (normal) to 4 (urgent) (optional)",
-        enum: [1, 2, 3, 4]
-      },
-      parent_task_name: {
-        type: "string",
-        description: "Name of the parent task to create this as a subtask (optional)"
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const TOOLS_DIR = join(__dirname, '..', 'tools', 'todoist');
+
+// Helper function to execute tool and return JSON result
+async function executeTool(toolPath: string, args: string[] = []): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const childProcess: ChildProcess = spawn('node', [toolPath, ...args], {
+      env: { ...process.env, TODOIST_API_TOKEN: process.env.TODOIST_API_TOKEN }
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    childProcess.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    childProcess.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    childProcess.on('close', (code: number) => {
+      if (code !== 0) {
+        reject(new Error(`Tool execution failed: ${stderr}`));
+        return;
       }
-    },
-    required: ["content"]
-  }
-};
-
-const GET_TASKS_TOOL: Tool = {
-  name: "todoist_get_tasks",
-  description: "Get a list of tasks from Todoist with various filters",
-  inputSchema: {
-    type: "object",
-    properties: {
-      project_id: {
-        type: "string",
-        description: "Filter tasks by project ID (optional)"
-      },
-      filter: {
-        type: "string",
-        description: "Natural language filter like 'today', 'tomorrow', 'next week', 'priority 1', 'overdue' (optional)"
-      },
-      priority: {
-        type: "number",
-        description: "Filter by priority level (1-4) (optional)",
-        enum: [1, 2, 3, 4]
-      },
-      limit: {
-        type: "number",
-        description: "Maximum number of tasks to return (optional)",
-        default: 10
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (e) {
+        resolve(stdout.trim());
       }
-    }
-  }
-};
+    });
+  });
+}
 
-const UPDATE_TASK_TOOL: Tool = {
-  name: "todoist_update_task",
-  description: "Update an existing task in Todoist by searching for it by name and then updating it",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and update"
-      },
-      content: {
-        type: "string",
-        description: "New content/title for the task (optional)"
-      },
-      description: {
-        type: "string",
-        description: "New description for the task (optional)"
-      },
-      due_string: {
-        type: "string",
-        description: "New due date in natural language like 'tomorrow', 'next Monday' (optional)"
-      },
-      priority: {
-        type: "number",
-        description: "New priority level from 1 (normal) to 4 (urgent) (optional)",
-        enum: [1, 2, 3, 4]
-      }
-    },
-    required: ["task_name"]
-  }
-};
-
-const DELETE_TASK_TOOL: Tool = {
-  name: "todoist_delete_task",
-  description: "Delete a task from Todoist by searching for it by name",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and delete"
-      }
-    },
-    required: ["task_name"]
-  }
-};
-
-const COMPLETE_TASK_TOOL: Tool = {
-  name: "todoist_complete_task",
-  description: "Mark a task as complete by searching for it by name",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and complete"
-      }
-    },
-    required: ["task_name"]
-  }
-};
-
-const UPDATE_LABELS_TOOL: Tool = {
-  name: "todoist_update_labels",
-  description: "Update the labels on a task by searching for it by name",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and update"
-      },
-      labels: {
-        type: "array",
-        items: { type: "string" },
-        description: "Array of label names to set on the task"
-      }
-    },
-    required: ["task_name", "labels"]
-  }
-};
-
-const GET_PROJECTS_TOOL: Tool = {
-  name: "todoist_get_projects",
-  description: "Get a list of all projects",
-  inputSchema: {
-    type: "object",
-    properties: {
-      name_contains: {
-        type: "string",
-        description: "Optional filter to search for projects containing this text in their name"
-      }
-    }
-  }
-};
-
-const ADD_COMMENT_TOOL: Tool = {
-  name: "todoist_add_comment",
-  description: "Add a comment to a task by searching for it by name",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and comment on"
-      },
-      content: {
-        type: "string",
-        description: "The content of the comment to add"
-      }
-    },
-    required: ["task_name", "content"]
-  }
-};
-
-const GET_COMMENTS_TOOL: Tool = {
-  name: "todoist_get_comments",
-  description: "Get all comments for a task by searching for it by name",
-  inputSchema: {
-    type: "object",
-    properties: {
-      task_name: {
-        type: "string",
-        description: "Name/content of the task to search for and get comments from"
-      }
-    },
-    required: ["task_name"]
-  }
-};
-
-// Server implementation
-const server = new Server(
+// Define tools that map to our CLI tools
+const TOOLS: Tool[] = [
   {
-    name: "todoist-mcp-server",
-    version: "0.1.0",
+    name: "todoist_list_tasks",
+    description: "List tasks from Todoist with various filters",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "Project ID to filter tasks" },
+        filter: { type: "string", description: "Todoist filter query" }
+      }
+    }
   },
   {
-    capabilities: {
-      tools: {},
-    },
+    name: "todoist_add_task",
+    description: "Create a new task in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "Task content" },
+        description: { type: "string", description: "Task description" },
+        project_id: { type: "string", description: "Project ID" },
+        due_string: { type: "string", description: "Due date in natural language" }
+      },
+      required: ["content"]
+    }
   },
-);
-
-// Check for API token
-const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN!;
-if (!TODOIST_API_TOKEN) {
-  console.error("Error: TODOIST_API_TOKEN environment variable is required");
-  process.exit(1);
-}
-
-// Initialize Todoist client
-const todoistClient = new TodoistApi(TODOIST_API_TOKEN);
-
-// Type guards for arguments
-function isCreateTaskArgs(args: unknown): args is { 
-  content: string;
-  description?: string;
-  due_string?: string;
-  priority?: number;
-  parent_task_name?: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "content" in args &&
-    typeof (args as { content: string }).content === "string"
-  );
-}
-
-function isGetTasksArgs(args: unknown): args is { 
-  project_id?: string;
-  filter?: string;
-  priority?: number;
-  limit?: number;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null
-  );
-}
-
-function isUpdateTaskArgs(args: unknown): args is {
-  task_name: string;
-  content?: string;
-  description?: string;
-  due_string?: string;
-  priority?: number;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string"
-  );
-}
-
-function isDeleteTaskArgs(args: unknown): args is {
-  task_name: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string"
-  );
-}
-
-function isCompleteTaskArgs(args: unknown): args is {
-  task_name: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string"
-  );
-}
-
-function isUpdateLabelsArgs(args: unknown): args is {
-  task_name: string;
-  labels: string[];
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string" &&
-    "labels" in args &&
-    Array.isArray((args as { labels: string[] }).labels) &&
-    (args as { labels: string[] }).labels.every(label => typeof label === "string")
-  );
-}
-
-function isGetProjectsArgs(args: unknown): args is {
-  name_contains?: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    (!("name_contains" in args) || typeof (args as any).name_contains === "string")
-  );
-}
-
-function isAddCommentArgs(args: unknown): args is {
-  task_name: string;
-  content: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string" &&
-    "content" in args &&
-    typeof (args as { content: string }).content === "string"
-  );
-}
-
-function isGetCommentsArgs(args: unknown): args is {
-  task_name: string;
-} {
-  return (
-    typeof args === "object" &&
-    args !== null &&
-    "task_name" in args &&
-    typeof (args as { task_name: string }).task_name === "string"
-  );
-}
-
-// Tool handlers
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
-    CREATE_TASK_TOOL, 
-    GET_TASKS_TOOL, 
-    UPDATE_TASK_TOOL, 
-    DELETE_TASK_TOOL, 
-    COMPLETE_TASK_TOOL, 
-    UPDATE_LABELS_TOOL,
-    GET_PROJECTS_TOOL,
-    ADD_COMMENT_TOOL,
-    GET_COMMENTS_TOOL
-  ],
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  try {
-    const { name, arguments: args } = request.params;
-
-    if (!args) {
-      throw new Error("No arguments provided");
+  {
+    name: "todoist_update_task",
+    description: "Update an existing task in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "Task ID to update" },
+        content: { type: "string", description: "New task content" },
+        description: { type: "string", description: "New task description" },
+        due_string: { type: "string", description: "New due date" }
+      },
+      required: ["task_id"]
     }
-
-    if (name === "todoist_create_task") {
-      if (!isCreateTaskArgs(args)) {
-        throw new Error("Invalid arguments for todoist_create_task");
-      }
-
-      // If parent task name is provided, find the parent task first
-      let parentId: string | undefined;
-      if (args.parent_task_name) {
-        const tasks = await todoistClient.getTasks();
-        const parentTask = tasks.find(task => 
-          task.content.toLowerCase().includes(args.parent_task_name!.toLowerCase())
-        );
-
-        if (!parentTask) {
-          return {
-            content: [{ 
-              type: "text", 
-              text: `Could not find a parent task matching "${args.parent_task_name}"` 
-            }],
-            isError: true,
-          };
-        }
-        parentId = parentTask.id;
-      }
-
-      const task = await todoistClient.addTask({
-        content: args.content,
-        description: args.description,
-        dueString: args.due_string,
-        priority: args.priority,
-        parentId: parentId
-      });
-
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Task created:\nTitle: ${task.content}${task.description ? `\nDescription: ${task.description}` : ''}${task.due ? `\nDue: ${task.due.string}` : ''}${task.priority ? `\nPriority: ${task.priority}` : ''}${parentId ? `\nParent Task ID: ${parentId}` : ''}` 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_move_task",
+    description: "Move a task to a different project or section",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "Task ID to move" },
+        project_id: { type: "string", description: "Target project ID" },
+        section_id: { type: "string", description: "Target section ID (optional)" }
+      },
+      required: ["task_id", "project_id"]
     }
-
-    if (name === "todoist_get_tasks") {
-      if (!isGetTasksArgs(args)) {
-        throw new Error("Invalid arguments for todoist_get_tasks");
-      }
-      
-      const tasks = await todoistClient.getTasks({
-        projectId: args.project_id,
-        filter: args.filter
-      });
-
-      // Apply additional filters
-      let filteredTasks = tasks;
-      if (args.priority) {
-        filteredTasks = filteredTasks.filter(task => task.priority === args.priority);
-      }
-      
-      // Apply limit
-      if (args.limit && args.limit > 0) {
-        filteredTasks = filteredTasks.slice(0, args.limit);
-      }
-      
-      const taskList = filteredTasks.map(task => 
-        `- project id:${task.projectId} ${task.content}${task.description ? `\n  Description: ${task.description}` : ''}${task.due ? `\n  Due: ${task.due.string}` : ''}${task.priority ? `\n  Priority: ${task.priority}` : ''}`
-      ).join('\n\n');
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: filteredTasks.length > 0 ? taskList : "No tasks found matching the criteria" 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_auto_tagger",
+    description: "Automatically tag tasks based on content",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "Task ID to auto-tag" }
+      },
+      required: ["task_id"]
     }
-
-    if (name === "todoist_update_task") {
-      if (!isUpdateTaskArgs(args)) {
-        throw new Error("Invalid arguments for todoist_update_task");
+  },
+  {
+    name: "todoist_list_labels",
+    description: "List all labels in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name_contains: { type: "string", description: "Filter labels by name" }
       }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Build update data
-      const updateData: any = {};
-      if (args.content) updateData.content = args.content;
-      if (args.description) updateData.description = args.description;
-      if (args.due_string) updateData.dueString = args.due_string;
-      if (args.priority) updateData.priority = args.priority;
-
-      const updatedTask = await todoistClient.updateTask(matchingTask.id, updateData);
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Task "${matchingTask.content}" updated:\nNew Title: ${updatedTask.content}${updatedTask.description ? `\nNew Description: ${updatedTask.description}` : ''}${updatedTask.due ? `\nNew Due Date: ${updatedTask.due.string}` : ''}${updatedTask.priority ? `\nNew Priority: ${updatedTask.priority}` : ''}` 
-        }],
-        isError: false,
-      };
     }
-
-    if (name === "todoist_delete_task") {
-      if (!isDeleteTaskArgs(args)) {
-        throw new Error("Invalid arguments for todoist_delete_task");
-      }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Delete the task
-      await todoistClient.deleteTask(matchingTask.id);
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Successfully deleted task: "${matchingTask.content}"` 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_add_comment",
+    description: "Add a comment to a task",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "Task ID to comment on" },
+        content: { type: "string", description: "Comment content" }
+      },
+      required: ["task_id", "content"]
     }
-
-    if (name === "todoist_complete_task") {
-      if (!isCompleteTaskArgs(args)) {
-        throw new Error("Invalid arguments for todoist_complete_task");
+  },
+  {
+    name: "todoist_list_projects",
+    description: "List all projects in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name_contains: { type: "string", description: "Filter projects by name" }
       }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Complete the task
-      await todoistClient.closeTask(matchingTask.id);
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Successfully completed task: "${matchingTask.content}"` 
-        }],
-        isError: false,
-      };
     }
-
-    if (name === "todoist_update_labels") {
-      if (!isUpdateLabelsArgs(args)) {
-        throw new Error("Invalid arguments for todoist_update_labels");
-      }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Update the task's labels
-      const updatedTask = await todoistClient.updateTask(matchingTask.id, {
-        labels: args.labels
-      });
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Updated labels for task "${matchingTask.content}":\nLabels: ${updatedTask.labels.join(", ") || "none"}` 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_add_project",
+    description: "Create a new project in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Project name" },
+        parent_id: { type: "string", description: "Parent project ID" }
+      },
+      required: ["name"]
     }
-
-    if (name === "todoist_get_projects") {
-      if (!isGetProjectsArgs(args)) {
-        throw new Error("Invalid arguments for todoist_get_projects");
-      }
-
-      const projects = await todoistClient.getProjects();
-      
-      // Apply name filter if provided
-      let filteredProjects = projects;
-      if (args.name_contains) {
-        filteredProjects = projects.filter(project => 
-          project.name.toLowerCase().includes(args.name_contains!.toLowerCase())
-        );
-      }
-
-      const projectList = filteredProjects.map(project => 
-        `- project id:${project.id} ${project.name}${project.parentId ? " (sub-project)" : ""}${project.isFavorite ? " ⭐" : ""}`
-      ).join('\n');
-
-      return {
-        content: [{ 
-          type: "text", 
-          text: projectList || "No projects found" 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_update_project",
+    description: "Update an existing project in Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "Project ID to update" },
+        name: { type: "string", description: "New project name" }
+      },
+      required: ["project_id"]
     }
-
-    if (name === "todoist_add_comment") {
-      if (!isAddCommentArgs(args)) {
-        throw new Error("Invalid arguments for todoist_add_comment");
-      }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Add the comment
-      const comment = await todoistClient.addComment({
-        taskId: matchingTask.id,
-        content: args.content
-      });
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Added comment to task "${matchingTask.content}":\n${comment.content}` 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_move_project",
+    description: "Move a project to a different parent",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "Project ID to move" },
+        parent_id: { type: "string", description: "New parent project ID" }
+      },
+      required: ["project_id"]
     }
-
-    if (name === "todoist_get_comments") {
-      if (!isGetCommentsArgs(args)) {
-        throw new Error("Invalid arguments for todoist_get_comments");
-      }
-
-      // First, search for the task
-      const tasks = await todoistClient.getTasks();
-      const matchingTask = tasks.find(task => 
-        task.content.toLowerCase().includes(args.task_name.toLowerCase())
-      );
-
-      if (!matchingTask) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `Could not find a task matching "${args.task_name}"` 
-          }],
-          isError: true,
-        };
-      }
-
-      // Get the comments
-      const comments = await todoistClient.getComments({
-        taskId: matchingTask.id
-      });
-      
-      if (comments.length === 0) {
-        return {
-          content: [{ 
-            type: "text", 
-            text: `No comments found for task "${matchingTask.content}" 
-`          }],
-          isError: false,
-        };
-      }
-
-      const commentList = comments.map(comment => 
-        `- ${comment.content}\n  Posted: ${comment.postedAt}`
-      ).join('\n\n');
-
-      return {
-        content: [{ 
-          type: "text", 
-          text: `Comments for task "${matchingTask.content}":\n\n${commentList}` 
-        }],
-        isError: false,
-      };
+  },
+  {
+    name: "todoist_list_sections",
+    description: "List sections in a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", description: "Project ID to list sections from" }
+      },
+      required: ["project_id"]
     }
-
-    return {
-      content: [{ type: "text", text: `Unknown tool: ${name}` }],
-      isError: true,
-    };
-  } catch (error) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-        },
-      ],
-      isError: true,
-    };
+  },
+  {
+    name: "todoist_add_section",
+    description: "Add a new section to a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Section name" },
+        project_id: { type: "string", description: "Project ID to add section to" }
+      },
+      required: ["name", "project_id"]
+    }
+  },
+  {
+    name: "todoist_remove_section",
+    description: "Remove a section from a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        section_id: { type: "string", description: "Section ID to remove" }
+      },
+      required: ["section_id"]
+    }
   }
-});
+];
+
+// Tool execution mapping
+const TOOL_MAPPING: { [key: string]: string } = {
+  todoist_list_tasks: 'list-tasks.js',
+  todoist_add_task: 'add-task.js',
+  todoist_update_task: 'update-task.js',
+  todoist_move_task: 'move-task.js',
+  todoist_auto_tagger: 'auto-tagger.js',
+  todoist_list_labels: 'list-labels.js',
+  todoist_add_comment: 'add-comment.js',
+  todoist_list_projects: 'list-projects.js',
+  todoist_add_project: 'add-project.js',
+  todoist_update_project: 'update-project.js',
+  todoist_move_project: 'move-project.js',
+  todoist_list_sections: 'list-sections.js',
+  todoist_add_section: 'add-section.js',
+  todoist_remove_section: 'remove-section.js'
+};
 
 async function runServer() {
+  const startTime = new Date().toISOString();
+  console.error(`Starting Todoist MCP Server at ${startTime}...`);
+
+  // Set API token for child processes
+  process.env.TODOIST_API_TOKEN = 'fdebb665194ea019e3362061d94c4502678576a5';
+
+  // Create a map of tools for capabilities
+  const toolsMap = TOOLS.reduce((acc, tool) => {
+    acc[tool.name] = {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema
+    };
+    return acc;
+  }, {} as Record<string, Tool>);
+
+  console.error(`Registering ${Object.keys(toolsMap).length} tools: ${Object.keys(toolsMap).join(", ")}`);
+
+  const server = new Server(
+    {
+      name: "todoist-mcp-server",
+      version: "0.1.0",
+    },
+    {
+      capabilities: {
+        tools: toolsMap
+      }
+    }
+  );
+
+  // Handle process signals
+  process.on('SIGINT', () => {
+    console.error("Received SIGINT, shutting down...");
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    console.error("Received SIGTERM, shutting down...");
+    process.exit(0);
+  });
+
+  // Keep process alive
+  process.stdin.resume();
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    console.error("Received ListTools request");
+    console.error(`Returning ${TOOLS.length} tools`);
+    return {
+      tools: TOOLS
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    console.error(`Received CallTool request for ${request.params.name}`);
+    const toolScript = TOOL_MAPPING[request.params.name];
+    if (!toolScript) {
+      throw new Error(`Unknown tool: ${request.params.name}`);
+    }
+
+    const toolPath = join(TOOLS_DIR, toolScript);
+    const args = Object.entries(request.params.arguments || {}).map(([key, value]) => 
+      typeof value === 'string' ? `--${key}=${value}` : `--${key}=${JSON.stringify(value)}`
+    );
+
+    try {
+      const result = await executeTool(toolPath, args);
+      console.error('Tool returned:', result);
+      
+      let formattedText;
+      if (typeof result === 'string') {
+        formattedText = result;
+      } else if (Array.isArray(result)) {
+        formattedText = result.map(project => 
+          `${project.name} (ID: ${project.id})${project.sections?.length ? `\n  Sections: ${project.sections.map((s: { name: string }) => s.name).join(', ')}` : ''}`
+        ).join('\n');
+      } else if (result.message) {
+        formattedText = result.message;
+      } else {
+        formattedText = JSON.stringify(result, null, 2);
+      }
+
+      const response = {
+        result: {
+          content: [{
+            type: "text",
+            text: formattedText
+          }]
+        }
+      };
+
+      console.error('Sending response:', response);
+      return response;
+    } catch (error) {
+      console.error('Tool error:', error);
+      const errorResponse = {
+        result: {
+          content: [{
+            type: "text",
+            text: `Error: ${error instanceof Error ? error.message : String(error)}`
+          }],
+          isError: true
+        }
+      };
+      console.error('Sending error response:', errorResponse);
+      return errorResponse;
+    }
+  });
+
   const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Todoist MCP Server running on stdio");
+  try {
+    console.error("Connecting to transport...");
+    await server.connect(transport);
+    console.error("Todoist MCP Server running on stdio");
+  } catch (error) {
+    console.error("Failed to connect transport:", error);
+    process.exit(1);
+  }
 }
 
 runServer().catch((error) => {
-  console.error("Fatal error running server:", error);
+  console.error("Server error:", error);
   process.exit(1);
 });

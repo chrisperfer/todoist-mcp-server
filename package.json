@@ -1,13 +1,11 @@
 {
-  "name": "@abhiz123/todoist-mcp-server",
+  "name": "@modelcontextprotocol/server-todoist",
   "version": "0.1.0",
   "description": "MCP server for Todoist API integration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
-  "bin": {
-    "todoist-mcp-server": "dist/index.js"
-  },
+  "bin": "dist/index.js",
   "files": [
     "dist"
   ],
