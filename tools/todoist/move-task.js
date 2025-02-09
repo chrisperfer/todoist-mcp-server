@@ -57,7 +57,7 @@ async function moveTask(taskQuery, options = {}) {
             }
 
             // Find target project if specified
-            let projectId = task.projectId;  // Default to current project
+            let projectId = task.projectId;
             if (options.project) {
                 const project = projects.find(p => 
                     p.id === options.project ||
@@ -74,19 +74,10 @@ async function moveTask(taskQuery, options = {}) {
 
             // Find target project and section or parent task
             let targetId;
-            console.log("Debug: Checking conditions:", {
-                parentDefined: options.parent !== undefined,
-                sectionDefined: options.section !== undefined,
-                projectDefined: options.project !== null
-            });
-
             if (options.parent !== undefined) {
-                console.log("Debug: Entering parent block");
                 if (options.parent === null) {
-                    // Moving to top level in current project
                     targetId = { project_id: projectId };
                 } else {
-                    // Find parent task
                     const parentTask = tasks.find(t => 
                         t.id === options.parent || 
                         t.content.toLowerCase().includes(options.parent.toLowerCase())
@@ -99,42 +90,30 @@ async function moveTask(taskQuery, options = {}) {
                     targetId = { parent_id: parentTask.id };
                 }
             } else if (options.section !== undefined) {
-                console.log("Debug: Entering section block");
-                console.log("Debug: Looking for section:", {
-                    query: options.section,
-                    projectId,
-                    allSections: sections.map(s => ({
-                        id: s.id,
-                        name: s.name,
-                        projectId: s.projectId
-                    }))
-                });
+                if (options.section === null) {
+                    targetId = { project_id: projectId };
+                } else {
+                    const section = sections.find(s => 
+                        (!options.project || s.projectId === projectId) && (
+                            s.id === options.section ||
+                            s.name.toLowerCase().includes(options.section.toLowerCase())
+                        )
+                    );
 
-                const section = sections.find(s => 
-                    (!options.project || s.projectId === projectId) && (
-                        s.id === options.section ||
-                        s.name.toLowerCase().includes(options.section.toLowerCase())
-                    )
-                );
-
-                console.log("Debug: Found section:", section);
-
-                if (!section) {
-                    console.error(`Error: Section "${options.section}" not found${options.project ? ' in target project' : ''}`);
-                    process.exit(1);
+                    if (!section) {
+                        console.error(`Error: Section "${options.section}" not found${options.project ? ' in target project' : ''}`);
+                        process.exit(1);
+                    }
+                    targetId = { section_id: section.id };
                 }
-                targetId = { section_id: section.id };
-                console.log("Debug: Setting targetId:", targetId);
             } else if (options.project) {
-                console.log("Debug: Entering project block");
-                // Moving to project root
                 targetId = { project_id: projectId };
             } else {
                 console.error("Error: Must specify either project, section, or parent task");
                 process.exit(1);
             }
 
-            // Create move command
+            // Create and execute move command
             const command = {
                 type: 'item_move',
                 uuid: randomUUID(),
@@ -144,11 +123,7 @@ async function moveTask(taskQuery, options = {}) {
                 }
             };
 
-            console.log("Debug: Sending move command:", command);
-
-            // Try Sync API first
-            console.log("Debug: Trying Sync API...");
-            let syncResponse = await fetch('https://api.todoist.com/sync/v9/sync', {
+            const syncResponse = await fetch('https://api.todoist.com/sync/v9/sync', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -159,49 +134,8 @@ async function moveTask(taskQuery, options = {}) {
                 })
             });
 
-            let result = await syncResponse.json();
-            console.log("Debug: Sync API response:", result);
-
-            // Verify if the move actually happened
-            console.log("Debug: Verifying move...");
-            const verifyTask = await api.getTask(task.id);
-            console.log("Debug: Task state after sync API:", {
-                projectId: verifyTask.projectId,
-                sectionId: verifyTask.sectionId
-            });
-
-            // If task hasn't moved to target location
-            const targetProjectId = targetId.project_id || 
-                                  (targetId.section_id ? sections.find(s => s.id === targetId.section_id)?.projectId : task.projectId);
-            const targetSectionId = targetId.section_id || null;
+            const result = await syncResponse.json();
             
-            if (verifyTask.projectId !== targetProjectId || verifyTask.sectionId !== targetSectionId) {
-                console.log("Debug: Sync API didn't move task to target location, trying REST API...");
-                try {
-                    await api.updateTask(task.id, {
-                        projectId: targetProjectId,
-                        sectionId: targetSectionId
-                    });
-                    result = { success: true };
-                    console.log("Debug: REST API update successful");
-                } catch (e) {
-                    console.log("Debug: REST API failed:", e.message);
-                    result = { success: false };
-                }
-
-                // Verify again after REST API
-                const finalVerify = await api.getTask(task.id);
-                console.log("Debug: Final task state:", {
-                    projectId: finalVerify.projectId,
-                    sectionId: finalVerify.sectionId
-                });
-
-                if (finalVerify.projectId !== targetProjectId || finalVerify.sectionId !== targetSectionId) {
-                    console.error("Error: Task move failed with both APIs");
-                    process.exit(1);
-                }
-            }
-
             if (options.json) {
                 console.log(JSON.stringify({
                     task: {
@@ -213,8 +147,8 @@ async function moveTask(taskQuery, options = {}) {
                         section: task.sectionId
                     },
                     to: {
-                        project: getProjectPath(targetProjectId),
-                        section: targetSectionId
+                        project: getProjectPath(projectId),
+                        section: targetId.section_id
                     },
                     status: result.sync_status ? 'moved' : 'error'
                 }, null, 2));
@@ -225,13 +159,13 @@ async function moveTask(taskQuery, options = {}) {
                     
                     if (status === 'ok' || status === true) {
                         console.log(`Task moved: ${task.content}`);
-                        if (targetProjectId !== task.projectId) {
+                        if (projectId !== task.projectId) {
                             console.log(`From project: ${getProjectPath(task.projectId)}`);
-                            console.log(`To project: ${getProjectPath(targetProjectId)}`);
+                            console.log(`To project: ${getProjectPath(projectId)}`);
                         }
-                        if (targetSectionId !== task.sectionId) {
+                        if (targetId.section_id !== task.sectionId) {
                             const fromSection = sections.find(s => s.id === task.sectionId);
-                            const toSection = sections.find(s => s.id === targetSectionId);
+                            const toSection = sections.find(s => s.id === targetId.section_id);
                             console.log(`From section: ${fromSection ? fromSection.name : 'none'}`);
                             console.log(`To section: ${toSection ? toSection.name : 'none'}`);
                         }
@@ -244,7 +178,6 @@ async function moveTask(taskQuery, options = {}) {
                     process.exit(1);
                 }
             }
-
         } catch (apiError) {
             console.error("API Error:", apiError.message);
             throw apiError;
@@ -260,11 +193,9 @@ const args = process.argv.slice(2);
 const options = {
     json: args.includes('--json'),
     project: null,
-    section: undefined,  // undefined means don't change, null means remove
-    parent: undefined    // Change this line - undefined means don't change
+    section: undefined,
+    parent: undefined
 };
-
-console.log("Debug: Initial options:", options);
 
 // Get task query (everything before the first -- flag)
 const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
@@ -294,8 +225,6 @@ while (i !== -1 && i < args.length) {
     }
     i++;
 }
-
-console.log("Debug: Final options:", options);
 
 // Run if called directly
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
