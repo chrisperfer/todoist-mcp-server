@@ -1,0 +1,8 @@
+{
+  "name": "todoist-tools",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@doist/todoist-api-typescript": "^3.0.3"
+  }
+} 
