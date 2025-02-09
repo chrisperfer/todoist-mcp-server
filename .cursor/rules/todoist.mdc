@@ -1,0 +1,7 @@
+---
+description: run todoist tools
+globs: 
+---
+
+# Your rule content
+all todoist tools are in @tools/todoist, and are node scripts that you can run to query todoist and update todoist.  You have permission to run them. Please use the tools and do not try and go off piste and create something new. If you find a gap in something that you cannot do, notifiy the user and add it to todoist_gaps.md
