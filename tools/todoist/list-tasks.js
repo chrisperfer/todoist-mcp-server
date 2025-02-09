@@ -47,6 +47,32 @@ async function listTasks(options = {}) {
                 return path.join(' » ');
             };
 
+            // Function to check if a string is a valid project ID
+            const isProjectId = (str) => {
+                return /^\d+$/.test(str);
+            };
+
+            // Function to do smart project name matching
+            const matchesProjectName = (projectPath, filter) => {
+                // Split into words and normalize
+                const projectWords = projectPath.toLowerCase().split(/[\s»]+/).filter(w => w);
+                const filterWords = filter.toLowerCase().split(/\s+/).filter(w => w);
+                
+                // For single word matching, try partial matches
+                if (filterWords.length === 1) {
+                    return projectWords.some(word => 
+                        word.includes(filterWords[0]) || filterWords[0].includes(word)
+                    );
+                }
+                
+                // For multi-word matching, require all words to match
+                return filterWords.every(filterWord => 
+                    projectWords.some(projectWord => 
+                        projectWord.includes(filterWord) || filterWord.includes(projectWord)
+                    )
+                );
+            };
+
             // Function to get section name with project context
             const getSectionInfo = (task) => {
                 if (!task.sectionId) return null;
@@ -58,11 +84,17 @@ async function listTasks(options = {}) {
             // Filter tasks by project if specified
             let filteredTasks = tasks;
             if (options.project) {
-                const projectFilter = options.project.toLowerCase();
-                filteredTasks = tasks.filter(task => {
-                    const projectPath = getProjectPath(task.projectId).toLowerCase();
-                    return projectPath.includes(projectFilter);
-                });
+                if (isProjectId(options.project)) {
+                    // If it's a numeric ID, do direct ID matching
+                    const projectId = options.project;
+                    filteredTasks = tasks.filter(task => String(task.projectId) === projectId);
+                } else {
+                    // If it's a name, do name matching
+                    filteredTasks = tasks.filter(task => {
+                        const projectPath = getProjectPath(task.projectId);
+                        return matchesProjectName(projectPath, options.project);
+                    });
+                }
 
                 if (filteredTasks.length === 0) {
                     console.log(`No tasks found in projects matching "${options.project}"`);
