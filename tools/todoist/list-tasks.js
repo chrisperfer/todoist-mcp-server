@@ -22,9 +22,11 @@ async function listTasks(options = {}) {
                 return;
             }
 
-            // Get projects for resolving project names
+            // Get projects and sections for resolving names
             const projects = await api.getProjects();
+            const sections = await api.getSections();
             const projectMap = new Map(projects.map(p => [p.id, p]));
+            const sectionMap = new Map(sections.map(s => [s.id, s]));
 
             // Function to build the full project path
             const getProjectPath = (projectId) => {
@@ -43,6 +45,14 @@ async function listTasks(options = {}) {
                 }
                 
                 return path.join(' » ');
+            };
+
+            // Function to get section name with project context
+            const getSectionInfo = (task) => {
+                if (!task.sectionId) return null;
+                const section = sectionMap.get(task.sectionId);
+                if (!section) return null;
+                return section.name;
             };
 
             // Filter tasks by project if specified
@@ -95,7 +105,8 @@ async function listTasks(options = {}) {
                 const tasksWithProject = filteredTasks.map(task => ({
                     ...task,
                     projectPath: getProjectPath(task.projectId),
-                    labels: task.labels || []  // Ensure labels is always an array
+                    section: getSectionInfo(task),
+                    labels: task.labels || []
                 }));
                 console.log(JSON.stringify(tasksWithProject, null, 2));
                 return;
@@ -106,6 +117,8 @@ async function listTasks(options = {}) {
                     console.log(`Task: ${task.content}`);
                     console.log(`  ID: ${task.id}`);
                     console.log(`  Project: ${getProjectPath(task.projectId)}`);
+                    const section = getSectionInfo(task);
+                    if (section) console.log(`  Section: ${section}`);
                     if (task.due) console.log(`  Due: ${task.due.date}${task.due.datetime ? ' ' + task.due.datetime : ''}`);
                     if (task.priority) console.log(`  Priority: ${task.priority}`);
                     if (task.labels && task.labels.length) console.log(`  Labels: @${task.labels.join(', @')}`);
@@ -128,10 +141,8 @@ async function listTasks(options = {}) {
                 // Add due date and time if they exist
                 if (task.due) {
                     if (task.due.datetime) {
-                        // If there's a specific time, show date and time
                         details.push(`due ${task.due.datetime}`);
                     } else {
-                        // If it's just a date, show that
                         details.push(`due ${task.due.date}`);
                     }
                 }
@@ -139,6 +150,12 @@ async function listTasks(options = {}) {
                 // Add project name
                 const projectPath = getProjectPath(task.projectId);
                 details.push(`[${projectPath}]`);
+
+                // Add section if it exists
+                const section = getSectionInfo(task);
+                if (section) {
+                    details.push(`{${section}}`);
+                }
 
                 // Add labels if they exist
                 if (task.labels && task.labels.length > 0) {
