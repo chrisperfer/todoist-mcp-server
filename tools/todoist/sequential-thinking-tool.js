@@ -31,6 +31,9 @@ class SequentialThinkingTool {
     if (typeof data.nextThoughtNeeded !== 'boolean') {
       throw new Error('Invalid nextThoughtNeeded: must be a boolean');
     }
+    if (data.waitSeconds && typeof data.waitSeconds !== 'number') {
+      throw new Error('Invalid waitSeconds: must be a number');
+    }
     return {
       thought: data.thought,
       thoughtNumber: data.thoughtNumber,
@@ -41,6 +44,7 @@ class SequentialThinkingTool {
       branchFromThought: data.branchFromThought,
       branchId: data.branchId,
       needsMoreThoughts: data.needsMoreThoughts,
+      waitSeconds: data.waitSeconds,
     };
   }
 
@@ -54,11 +58,15 @@ class SequentialThinkingTool {
       revisesThought,
       branchFromThought,
       branchId,
+      waitSeconds,
     } = thoughtData;
     let prefix = '';
     let context = '';
 
-    if (isRevision) {
+    if (waitSeconds) {
+      prefix = chalk.cyan('⏳ Waiting');
+      context = ` (${waitSeconds}s)`;
+    } else if (isRevision) {
       prefix = chalk.yellow('🔄 Revision');
       context = ` (revising thought ${revisesThought})`;
     } else if (branchFromThought) {
@@ -79,7 +87,7 @@ class SequentialThinkingTool {
   }
 
   // Processes a single thought (input object) and returns a JSON object.
-  processThought(input) {
+  async processThought(input) {
     try {
       const validatedInput = this.validateThoughtData(input);
       if (validatedInput.thoughtNumber > validatedInput.totalThoughts) {
@@ -95,6 +103,12 @@ class SequentialThinkingTool {
       const formattedThought = this.formatThought(validatedInput);
       // Log the formatted thought to stderr (so it does not interfere with STDOUT JSON output).
       console.error(formattedThought);
+
+      // If waitSeconds is specified, wait for that duration
+      if (validatedInput.waitSeconds) {
+        await new Promise(resolve => setTimeout(resolve, validatedInput.waitSeconds * 1000));
+      }
+
       return {
         content: [
           {
@@ -160,7 +174,7 @@ async function main() {
       process.exit(1);
     }
     const tool = new SequentialThinkingTool();
-    const result = tool.processThought(jsonInput);
+    const result = await tool.processThought(jsonInput);
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     console.error('Fatal error:', err);
