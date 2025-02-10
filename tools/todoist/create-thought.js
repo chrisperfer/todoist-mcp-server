@@ -8,59 +8,61 @@ import { tmpdir } from 'os';
 
 const execAsync = promisify(exec);
 
-class FileMonitor {
-  constructor() {
-    this.currentThought = 0;
-  }
-
-  async createThought() {
-    this.currentThought++;
-    const { stdout: files } = await execAsync('ls -l tools');
-    
-    return {
-      thought: this.currentThought === 1
-        ? `Initial file listing. Please analyze:\n${files}`
-        : `Please analyze this file listing and tell me if anything has changed:\n${files}`,
-      thoughtNumber: this.currentThought,
-      totalThoughts: this.currentThought,
-      nextThoughtNeeded: true,
-      waitSeconds: 10,
-      metadata: { files }
-    };
-  }
-}
-
 async function monitorFiles() {
   try {
-    const monitor = new FileMonitor();
+    let thoughtNumber = 0;
+    let previousListing = '';
     let nextThoughtNeeded = true;
-    let previousThought = null;
+    let workflowState = 'monitoring'; // Can be: monitoring, analyzing, processing
 
     while (nextThoughtNeeded) {
-      const thought = await monitor.createThought();
+      thoughtNumber++;
+      const { stdout: currentListing } = await execAsync('ls -l tools');
       
-      if (previousThought && previousThought.metadata.files !== thought.metadata.files) {
-        const finalThought = {
-          thought: `Changes detected! Here are both listings for analysis:\n\nPrevious listing:\n${previousThought.metadata.files}\n\nNew listing:\n${thought.metadata.files}\n\nPlease analyze and explain what has changed. Would you like to continue monitoring for more changes?`,
-          thoughtNumber: monitor.currentThought + 1,
-          totalThoughts: monitor.currentThought + 1,
+      let thought;
+      if (workflowState === 'monitoring') {
+        if (previousListing === '') {
+          thought = {
+            thought: `Starting to monitor the tools directory:\n${currentListing}`,
+            thoughtNumber,
+            totalThoughts: thoughtNumber,
+            nextThoughtNeeded: true,
+            waitSeconds: 10
+          };
+        } else if (previousListing !== currentListing) {
+          workflowState = 'analyzing';
+          thought = {
+            thought: `I notice the directory has changed. Let me analyze what's different:\n\nBefore:\n${previousListing}\nAfter:\n${currentListing}`,
+            thoughtNumber,
+            totalThoughts: thoughtNumber + 1,
+            nextThoughtNeeded: true
+          };
+        } else {
+          thought = {
+            thought: `Checking directory state:\n${currentListing}`,
+            thoughtNumber,
+            totalThoughts: thoughtNumber,
+            nextThoughtNeeded: true,
+            waitSeconds: 10
+          };
+        }
+      } else if (workflowState === 'analyzing') {
+        workflowState = 'processing';
+        thought = {
+          thought: `Based on my analysis of the changes, I will now process them. After processing, should I resume monitoring?`,
+          thoughtNumber,
+          totalThoughts: thoughtNumber,
           nextThoughtNeeded: true
         };
-        
-        const tmpFile = join(tmpdir(), `thought-${Date.now()}.json`);
-        await writeFile(tmpFile, JSON.stringify(finalThought));
-        const { stdout, stderr } = await execAsync(`node tools/todoist/sequential-thinking-tool.js < ${tmpFile}`);
-        
-        if (stderr) console.error(stderr);
-        const response = JSON.parse(stdout);
-        const thoughtResponse = JSON.parse(response.content[0].text);
-        nextThoughtNeeded = thoughtResponse.nextThoughtNeeded;
-        
-        if (nextThoughtNeeded) {
-          previousThought = thought;
-          continue;
-        }
-        break;
+      } else if (workflowState === 'processing') {
+        // Here the LLM can decide whether to go back to monitoring or stop
+        workflowState = 'monitoring';
+        thought = {
+          thought: `Processing complete. Your next command?`,
+          thoughtNumber,
+          totalThoughts: thoughtNumber,
+          nextThoughtNeeded: false
+        };
       }
 
       const tmpFile = join(tmpdir(), `thought-${Date.now()}.json`);
@@ -76,7 +78,7 @@ async function monitorFiles() {
       const thoughtResponse = JSON.parse(response.content[0].text);
       nextThoughtNeeded = thoughtResponse.nextThoughtNeeded;
       
-      previousThought = thought;
+      previousListing = currentListing;
     }
   } catch (error) {
     console.error("Error:", error.message);
