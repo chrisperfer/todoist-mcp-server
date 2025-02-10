@@ -132,6 +132,35 @@ class SequentialThinkingTool {
     return lines.join('\n');
   }
 
+  // Helper function to format JSON in a clean, readable way
+  formatJson(data) {
+    const terminalWidth = process.stdout.columns || 120;
+    
+    // If the data contains nested JSON strings, parse them
+    if (data.content && data.content[0] && data.content[0].text) {
+      try {
+        const innerJson = JSON.parse(data.content[0].text);
+        data.content[0].text = innerJson;
+      } catch (e) {
+        // If parsing fails, leave as is
+      }
+    }
+    
+    const json = JSON.stringify(data, null, 2);
+    
+    // Split the JSON into lines and ensure each line fits within terminal width
+    const lines = json.split('\n');
+    const formattedLines = lines.map(line => {
+      if (line.length > terminalWidth) {
+        // If line is too long, try to break it at a reasonable point
+        return this.wordWrap(line, terminalWidth - 2);
+      }
+      return line;
+    });
+
+    return formattedLines.join('\n');
+  }
+
   // Processes a single thought (input object) and returns a JSON object.
   async processThought(input) {
     try {
@@ -147,48 +176,41 @@ class SequentialThinkingTool {
         this.branches[validatedInput.branchId].push(validatedInput);
       }
       const formattedThought = this.formatThought(validatedInput);
-      // Log the formatted thought to stderr (so it does not interfere with STDOUT JSON output).
       console.error(formattedThought);
 
-      // If waitSeconds is specified, wait for that duration
       if (validatedInput.waitSeconds) {
         await new Promise(resolve => setTimeout(resolve, validatedInput.waitSeconds * 1000));
       }
+
+      // Create the response data
+      const responseData = {
+        thoughtNumber: validatedInput.thoughtNumber,
+        totalThoughts: validatedInput.totalThoughts,
+        nextThoughtNeeded: validatedInput.nextThoughtNeeded,
+        branches: Object.keys(this.branches),
+        thoughtHistoryLength: this.thoughtHistory.length
+      };
 
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(
-              {
-                thoughtNumber: validatedInput.thoughtNumber,
-                totalThoughts: validatedInput.totalThoughts,
-                nextThoughtNeeded: validatedInput.nextThoughtNeeded,
-                branches: Object.keys(this.branches),
-                thoughtHistoryLength: this.thoughtHistory.length,
-              },
-              null,
-              2
-            ),
-          },
-        ],
+            text: responseData
+          }
+        ]
       };
     } catch (error) {
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(
-              {
-                error: error instanceof Error ? error.message : String(error),
-                status: 'failed',
-              },
-              null,
-              2
-            ),
-          },
+            text: {
+              error: error instanceof Error ? error.message : String(error),
+              status: 'failed'
+            }
+          }
         ],
-        isError: true,
+        isError: true
       };
     }
   }
@@ -221,6 +243,8 @@ async function main() {
     }
     const tool = new SequentialThinkingTool();
     const result = await tool.processThought(jsonInput);
+    
+    // Print the formatted output directly
     console.log(JSON.stringify(result, null, 2));
   } catch (err) {
     console.error('Fatal error:', err);
