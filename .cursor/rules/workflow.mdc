@@ -1,0 +1,126 @@
+---
+description: run workflows with intervals, branching, decision trees
+globs: 
+---
+
+
+# Workflow Tool Usage Guide
+
+The @tools/todoist/workflow-tool.js is a Node.js-based tool for implementing structured, sequential thinking processes with visual feedback. It processes JSON input representing "thoughts" and provides formatted output with progress tracking.
+
+## Core Concepts
+
+1. **Thought Structure**
+   Each thought requires a JSON object with these properties:
+   - `thought` (string, required): The content of the thought
+   - `thoughtNumber` (number, required): Current position in sequence
+   - `totalThoughts` (number, required): Total expected thoughts
+   - `nextThoughtNeeded` (boolean, required): Whether more thoughts follow
+   - `waitSeconds` (number, optional): Pause duration before next thought
+   - `isRevision` (boolean, optional): If this revises a previous thought
+   - `revisesThought` (number, optional): Which thought is being revised
+   - `branchFromThought` (number, optional): Starting point for a new branch
+   - `branchId` (string, optional): Identifier for the branch
+   - `needsMoreThoughts` (boolean, optional): If more thoughts needed beyond initial total
+
+## Visual Formatting
+
+The tool provides visual output with:
+- Bordered boxes for each thought
+- Different prefixes based on thought type:
+  - 💭 Regular thoughts
+  - 🔄 Revisions
+  - ⏳ Waiting thoughts (with timer)
+  - 🌿 Branch thoughts
+
+## Usage Patterns
+
+1. **Basic Sequential Thinking**:
+```json
+{
+  "thought": "Initial thought content",
+  "thoughtNumber": 1,
+  "totalThoughts": 3,
+  "nextThoughtNeeded": true
+}
+```
+
+2. **Adding Wait Times**:
+```json
+{
+  "thought": "Waiting thought content",
+  "thoughtNumber": 2,
+  "totalThoughts": 3,
+  "nextThoughtNeeded": true,
+  "waitSeconds": 60
+}
+```
+
+3. **Revising Previous Thoughts**:
+```json
+{
+  "thought": "Revision content",
+  "thoughtNumber": 3,
+  "totalThoughts": 3,
+  "nextThoughtNeeded": false,
+  "isRevision": true,
+  "revisesThought": 1
+}
+```
+
+## Best Practices
+
+1. **Thought Progression**
+   - Start with thought number 1
+   - Increment thoughtNumber sequentially
+   - Set nextThoughtNeeded to false on final thought
+
+2. **Wait Times**
+   - Use waitSeconds for processes needing pauses
+   - Keep wait times reasonable (typically under 300 seconds)
+
+3. **Branching**
+   - Use branchFromThought when exploring alternative paths
+   - Always provide a branchId when branching
+   - Track branch relationships in complex workflows
+
+4. **Error Handling**
+   - Tool validates input structure
+   - Provides clear error messages for invalid input
+   - Maintains thought history for debugging
+
+## Command Line Usage
+```bash
+echo '{"thought": "content", ...}' > /tmp/thought.json && node tools/todoist/workflow-tool.js < /tmp/thought.json
+```
+
+## Integration Tips
+
+1. For complex workflows:
+   - Break down into clear steps
+   - Use wait times for rate-limiting or processing delays
+   - Leverage branching for parallel paths
+   - Use revisions for corrections or updates
+
+2. For monitoring tasks:
+   - Set appropriate wait intervals
+   - Use branching for different monitoring paths
+   - Include clear status updates in thought content
+
+3. For decision processes:
+   - Use branches for different options
+   - Include reasoning in thought content
+   - Mark decision points clearly
+
+## Common Use Cases
+
+The tool is particularly useful for:
+- Sequential processing tasks
+- Monitoring workflows
+- Decision trees
+- Multi-step analyses
+- Progress tracking
+- Timed operations
+- Branching logic flows
+
+The tool maintains state through a thought history and can handle complex workflows while providing clear visual feedback of the process.
