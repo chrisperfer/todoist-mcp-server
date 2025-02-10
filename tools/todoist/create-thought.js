@@ -8,22 +8,22 @@ import { tmpdir } from 'os';
 
 const execAsync = promisify(exec);
 
-async function monitorFiles() {
+async function monitorProjects() {
   try {
     let thoughtNumber = 0;
     let previousListing = '';
     let nextThoughtNeeded = true;
-    let workflowState = 'monitoring'; // Can be: monitoring, analyzing, processing
+    let workflowState = 'monitoring'; // Can be: monitoring, analyzing, listing_tasks
 
     while (nextThoughtNeeded) {
       thoughtNumber++;
-      const { stdout: currentListing } = await execAsync('ls -l tools');
+      const { stdout: currentListing } = await execAsync('node tools/todoist/list-projects.js');
       
       let thought;
       if (workflowState === 'monitoring') {
         if (previousListing === '') {
           thought = {
-            thought: `Starting to monitor the tools directory:\n${currentListing}`,
+            thought: `Starting to monitor Todoist projects:\n${currentListing}`,
             thoughtNumber,
             totalThoughts: thoughtNumber,
             nextThoughtNeeded: true,
@@ -32,14 +32,14 @@ async function monitorFiles() {
         } else if (previousListing !== currentListing) {
           workflowState = 'analyzing';
           thought = {
-            thought: `I notice the directory has changed. Let me analyze what's different:\n\nBefore:\n${previousListing}\nAfter:\n${currentListing}`,
+            thought: `I notice the projects have changed. Let me analyze what's different:\n\nBefore:\n${previousListing}\nAfter:\n${currentListing}\n\nI will identify the changed project and list its tasks.`,
             thoughtNumber,
             totalThoughts: thoughtNumber + 1,
             nextThoughtNeeded: true
           };
         } else {
           thought = {
-            thought: `Checking directory state:\n${currentListing}`,
+            thought: `Checking projects state:\n${currentListing}`,
             thoughtNumber,
             totalThoughts: thoughtNumber,
             nextThoughtNeeded: true,
@@ -47,21 +47,22 @@ async function monitorFiles() {
           };
         }
       } else if (workflowState === 'analyzing') {
-        workflowState = 'processing';
+        workflowState = 'listing_tasks';
+        // Here we let the LLM identify which project changed and list its tasks
         thought = {
-          thought: `Based on my analysis of the changes, I will now process them. After processing, should I resume monitoring?`,
+          thought: `Now I will list the tasks for the changed project. I'll use the project ID from the listing above.`,
           thoughtNumber,
           totalThoughts: thoughtNumber,
           nextThoughtNeeded: true
         };
-      } else if (workflowState === 'processing') {
-        // Here the LLM can decide whether to go back to monitoring or stop
+      } else if (workflowState === 'listing_tasks') {
+        // After listing tasks, we can go back to monitoring
         workflowState = 'monitoring';
         thought = {
-          thought: `Processing complete. Your next command?`,
+          thought: `Task listing complete. I'll resume monitoring projects.`,
           thoughtNumber,
           totalThoughts: thoughtNumber,
-          nextThoughtNeeded: false
+          nextThoughtNeeded: true
         };
       }
 
@@ -86,4 +87,4 @@ async function monitorFiles() {
   }
 }
 
-monitorFiles(); 
+monitorProjects(); 

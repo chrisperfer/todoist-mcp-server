@@ -34,9 +34,40 @@ async function listProjects(options = {}) {
                 projectSections.get(section.projectId).push(section);
             });
 
+            // Function to build the full path
+            const projectMap = new Map(projects.map(p => [p.id, p]));
+            const getProjectPath = (project) => {
+                const path = [project.name];
+                let current = project;
+                
+                while (current.parentId) {
+                    const parent = projectMap.get(current.parentId);
+                    if (!parent) break;
+                    path.unshift(parent.name);
+                    current = parent;
+                }
+                
+                return path.join(' » ');
+            };
+
+            // Filter projects by name if filter is provided
+            let filteredProjects = projects;
+            if (options.filter) {
+                const filterLower = options.filter.toLowerCase();
+                filteredProjects = projects.filter(project => {
+                    const projectPath = getProjectPath(project).toLowerCase();
+                    return projectPath.includes(filterLower);
+                });
+
+                if (filteredProjects.length === 0) {
+                    console.log(`No projects found matching "${options.filter}"`);
+                    return;
+                }
+            }
+
             if (options.json) {
                 // Add sections to each project in the JSON output
-                const projectsWithSections = projects.map(project => ({
+                const projectsWithSections = filteredProjects.map(project => ({
                     ...project,
                     sections: (projectSections.get(project.id) || []).sort((a, b) => a.order - b.order)
                 }));
@@ -46,7 +77,7 @@ async function listProjects(options = {}) {
 
             if (options.detailed) {
                 // Print each project with full details
-                projects.forEach(project => {
+                filteredProjects.forEach(project => {
                     console.log(`Project: ${project.name}`);
                     console.log(`  ID: ${project.id}`);
                     console.log(`  Order: ${project.order}`);
@@ -71,24 +102,7 @@ async function listProjects(options = {}) {
             }
 
             // Default output: ID and hierarchical name with sections
-            const projectMap = new Map(projects.map(p => [p.id, p]));
-
-            // Function to build the full path
-            const getProjectPath = (project) => {
-                const path = [project.name];
-                let current = project;
-                
-                while (current.parentId) {
-                    const parent = projectMap.get(current.parentId);
-                    if (!parent) break;
-                    path.unshift(parent.name);
-                    current = parent;
-                }
-                
-                return path.join(' » ');
-            };
-
-            projects.forEach(project => {
+            filteredProjects.forEach(project => {
                 console.log(`${project.id}\t${getProjectPath(project)}`);
                 // Show sections indented under their project
                 const projectSectionList = projectSections.get(project.id) || [];
@@ -113,10 +127,18 @@ async function listProjects(options = {}) {
 }
 
 // Parse command line arguments
+const args = process.argv.slice(2);
 const options = {
-    json: process.argv.includes('--json'),
-    detailed: process.argv.includes('--detailed')
+    json: args.includes('--json'),
+    detailed: args.includes('--detailed'),
+    filter: null
 };
+
+// Get filter if specified
+const filterIndex = args.indexOf('--filter');
+if (filterIndex !== -1 && filterIndex + 1 < args.length) {
+    options.filter = args[filterIndex + 1];
+}
 
 // Run if called directly
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
