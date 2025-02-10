@@ -60,6 +60,11 @@ class SequentialThinkingTool {
       branchId,
       waitSeconds,
     } = thoughtData;
+
+    // Get terminal width (default to 120 if can't be determined)
+    const terminalWidth = process.stdout.columns || 120;
+    const maxWidth = terminalWidth - 4; // Account for borders
+
     let prefix = '';
     let context = '';
 
@@ -76,14 +81,55 @@ class SequentialThinkingTool {
       prefix = chalk.blue('💭 Thought');
       context = '';
     }
+
     const header = `${prefix} ${thoughtNumber}/${totalThoughts}${context}`;
-    const border = '─'.repeat(Math.max(header.length, thought.length) + 4);
-    return `
-┌${border}┐
-│ ${header} │
-├${border}┤
-│ ${thought.padEnd(border.length - 2)} │
-└${border}┘`;
+    
+    // Word wrap the thought content
+    const wrappedThought = this.wordWrap(thought, maxWidth - 4); // Account for side padding
+    const lines = wrappedThought.split('\n');
+    
+    // Calculate box dimensions
+    const contentWidth = Math.max(
+      header.length,
+      ...lines.map(line => line.length)
+    );
+    const boxWidth = Math.min(maxWidth, contentWidth + 4); // Add padding
+    
+    // Create borders
+    const horizontalBorder = '─'.repeat(boxWidth);
+    
+    // Build the box with proper alignment
+    const formattedLines = [
+      `┌${horizontalBorder}┐`,
+      `│  ${header}${' '.repeat(boxWidth - header.length - 2)}│`,
+      `├${horizontalBorder}┤`,
+      ...lines.map(line => `│  ${line}${' '.repeat(boxWidth - line.length - 2)}│`),
+      `└${horizontalBorder}┘`
+    ];
+
+    return '\n' + formattedLines.join('\n') + '\n';
+  }
+
+  // Helper function to wrap text at word boundaries
+  wordWrap(text, maxWidth) {
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = '';
+
+    words.forEach(word => {
+      if (currentLine.length + word.length + 1 <= maxWidth) {
+        currentLine += (currentLine.length === 0 ? '' : ' ') + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    });
+    
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines.join('\n');
   }
 
   // Processes a single thought (input object) and returns a JSON object.
