@@ -14,8 +14,8 @@ async function listTasks(options = {}) {
         const api = new TodoistApi(token);
         
         try {
-            // Get all active tasks
-            const tasks = await api.getTasks();
+            // Get tasks with optional filter
+            const tasks = await api.getTasks(options.filter ? { filter: options.filter } : undefined);
             
             if (tasks.length === 0) {
                 console.log("No tasks found");
@@ -224,13 +224,20 @@ const options = {
     json: process.argv.includes('--json'),
     detailed: process.argv.includes('--detailed'),
     project: null,
-    labels: []
+    labels: [],
+    filter: null
 };
 
 // Get project filter if specified
 const projectIndex = process.argv.indexOf('--project');
 if (projectIndex !== -1 && projectIndex + 1 < process.argv.length) {
     options.project = process.argv[projectIndex + 1];
+}
+
+// Get filter if specified
+const filterIndex = process.argv.indexOf('--filter');
+if (filterIndex !== -1 && filterIndex + 1 < process.argv.length) {
+    options.filter = process.argv[filterIndex + 1];
 }
 
 // Get all label filters
@@ -240,6 +247,32 @@ while (labelIndex !== -1) {
         options.labels.push(process.argv[labelIndex + 1]);
     }
     labelIndex = process.argv.indexOf('--label', labelIndex + 1);
+}
+
+// Print help if requested
+if (process.argv.includes('--help')) {
+    console.log(`
+Usage: list-tasks [options]
+
+Options:
+  --json                Output in JSON format
+  --detailed           Show detailed task information
+  --project <name>     Filter tasks by project name or ID
+  --label <label>      Filter tasks by label (can be used multiple times)
+  --filter <filter>    Use Todoist filter query (see examples below)
+  --help              Show this help message
+
+Filter Examples:
+  --filter "today"                     Show today's tasks
+  --filter "overdue"                   Show overdue tasks
+  --filter "priority 4"                Show high priority tasks
+  --filter "no date & !assigned to:"   Show tasks without dates and not assigned
+  --filter "@waiting & !today"         Show waiting tasks not due today
+
+For more filter examples, visit:
+https://www.todoist.com/help/articles/introduction-to-filters-V98wIH
+`);
+    process.exit(0);
 }
 
 // Run if called directly
