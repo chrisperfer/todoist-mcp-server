@@ -521,26 +521,127 @@ async function batchMoveTask(api, filter, options) {
     }
 }
 
+function parseBatchLabelOptions(args) {
+    const options = {
+        filter: null,
+        labels: null,
+        addLabels: false,
+        removeLabels: false
+    };
+
+    // First argument is the filter if it doesn't start with --
+    if (args.length > 0 && !args[0].startsWith('--')) {
+        options.filter = args[0];
+        args = args.slice(1); // Remove filter from args for label parsing
+    }
+
+    if (!options.filter) {
+        console.error("Error: Filter is required for batch operations");
+        process.exit(1);
+    }
+
+    let i = 0;
+    while (i < args.length) {
+        switch (args[i]) {
+            case '--labels':
+                if (i + 1 < args.length) options.labels = args[++i];
+                break;
+            case '--add-labels':
+                if (i + 1 < args.length) {
+                    options.labels = args[++i];
+                    options.addLabels = true;
+                }
+                break;
+            case '--remove-labels':
+                if (i + 1 < args.length) {
+                    options.labels = args[++i];
+                    options.removeLabels = true;
+                }
+                break;
+        }
+        i++;
+    }
+
+    if (!options.labels) {
+        console.error("Error: Must specify labels with one of: --labels, --add-labels, or --remove-labels");
+        process.exit(1);
+    }
+
+    return options;
+}
+
+async function batchLabelTask(api, filter, options) {
+    // Get tasks matching the filter
+    const tasks = await api.getTasks({ filter });
+    if (tasks.length === 0) {
+        console.error(`No tasks found matching filter: ${filter}`);
+        process.exit(1);
+    }
+
+    // Build commands for each task
+    const commands = tasks.map(task => {
+        const existingLabels = task.labels || [];
+        let newLabels;
+
+        if (options.addLabels) {
+            newLabels = [...new Set([...existingLabels, ...options.labels.split(',').map(l => l.trim())])];
+        } else if (options.removeLabels) {
+            newLabels = existingLabels.filter(l => !options.labels.split(',').map(l => l.trim()).includes(l));
+        } else {
+            newLabels = options.labels.split(',').map(l => l.trim());
+        }
+
+        return {
+            type: 'item_update',
+            uuid: randomUUID(),
+            args: {
+                id: task.id,
+                labels: newLabels
+            }
+        };
+    });
+
+    // Execute all commands in one request
+    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
+
+    if (options.json) {
+        console.log(JSON.stringify({
+            tasks: tasks.map(task => ({
+                id: task.id,
+                content: task.content,
+                oldLabels: task.labels || [],
+                newLabels: commands.find(c => c.args.id === task.id).args.labels
+            })),
+            status: 'updated',
+            commandCount: commands.length
+        }, null, 2));
+    } else {
+        console.log(`Updated labels for ${tasks.length} tasks:`);
+        for (const task of tasks) {
+            const command = commands.find(c => c.args.id === task.id);
+            console.log(`- ${task.content} (${task.id})`);
+            console.log(`  From: ${task.labels?.join(', ') || 'none'}`);
+            console.log(`  To: ${command.args.labels.join(', ') || 'none'}`);
+        }
+    }
+}
+
 async function main() {
     try {
         const args = process.argv.slice(2);
         
-        // Get subcommand
         if (args.length === 0) {
-            console.error("Error: Subcommand required (add, update, move, or complete)");
+            console.error("Error: Subcommand required (add, update, move, batch-move, batch-label, or complete)");
             process.exit(1);
         }
         
         const subcommand = args[0];
         const subcommandArgs = args.slice(1);
         
-        // Initialize API
         const api = await initializeApi();
         
-        // Execute subcommand
         switch (subcommand) {
             case 'add':
-                // For add, first argument is content
                 if (subcommandArgs.length === 0) {
                     console.error("Error: Task content is required");
                     process.exit(1);
@@ -576,6 +677,10 @@ async function main() {
                 }
                 await batchMoveTask(api, batchMoveOptions.filter, { ...batchMoveOptions, json: args.includes('--json') });
                 break;
+            case 'batch-label':
+                const batchLabelOptions = parseBatchLabelOptions(subcommandArgs);
+                await batchLabelTask(api, batchLabelOptions.filter, { ...batchLabelOptions, json: args.includes('--json') });
+                break;
             default:
                 console.error(`Error: Unknown subcommand "${subcommand}"`);
                 process.exit(1);
@@ -586,7 +691,6 @@ async function main() {
     }
 }
 
-// Run if called directly
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
     main();
 }
