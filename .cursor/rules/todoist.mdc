@@ -52,8 +52,139 @@ Best Practices:
 - Consider task relationships when creating sections
 - Document any tasks that could belong in multiple sections
 
+When organizing Todoist tasks into parent-child groups:
+
+1. ANALYSIS (Discovery Phase)
+   - List all tasks in the project first: list-tasks.js --filter "p:Project Name"
+   - Identify natural categories from the tasks
+   - Plan category names with appropriate emojis for visual organization
+
+2. PARENT TASK CREATION
+   - Create parent tasks directly in the target project
+   - Use emojis for visual distinction
+   - Example: task.js add "📁 Category Name" --project ProjectName
+
+3. BATCH ORGANIZATION
+   - Use batch-move with specific search terms
+   - Combine related terms with OR operator: "search:term1 | search:term2"
+   - Move tasks category by category
+   - Command: task.js batch-move "p:Project & (search:term1 | search:term2)" --to-parent ParentID
+
+4. VERIFICATION
+   - Check organization after each batch
+   - Look for misplaced or uncategorized items
+   - Verify parent-child relationships are correct
+
+Best Practices:
+- Keep parent task names broad enough for future items
+- Use specific search terms to avoid false matches
+- Verify after each significant batch of moves
+- Handle ambiguous items individually when needed
+
+When organizing Todoist tasks using sub-projects:
+
+1. ANALYSIS (Discovery Phase)
+   - List all tasks in the parent project first: list-tasks.js --filter "p:Project Name"
+   - Identify natural groupings based on:
+     * Task type (e.g., recipes vs restaurants)
+     * Task context (e.g., planning vs execution)
+     * Task workflow (e.g., research vs implementation)
+   - Plan category names with appropriate emojis for visual distinction
+
+2. SUB-PROJECT CREATION
+   - Get parent project ID: list-projects.js | grep "Project Name"
+   - Create sub-projects using exact parent ID:
+     * Command: add-project.js "📁 Category Name" --parentId PARENT_ID
+   - Use meaningful emojis as prefixes for visual organization
+   - Keep category names broad enough for future tasks
+
+3. TASK MIGRATION
+   - Use batch-move with specific search terms for efficiency
+   - Combine multiple search terms with OR operator:
+     * Command: task.js batch-move "p:Project & (search:term1 | search:term2)" --to-project SUB_PROJECT_ID
+   - Move most clearly categorized tasks first
+   - Handle ambiguous tasks individually if needed
+
+4. VERIFICATION
+   - Check task distribution after moves
+   - Verify all tasks are properly categorized
+   - Confirm metadata (labels, due dates, etc.) is preserved
+   - Look for tasks that might need recategorization
+
+Best Practices:
+- Use clear, non-overlapping category names
+- Include emoji prefixes for visual scanning
+- Keep sub-project structure relatively flat (avoid deep nesting)
+- Use specific search terms to avoid false matches
+- Verify after each significant batch of moves
+- Consider future tasks when designing categories
+
+Example Category Prefixes:
+🎯 Goals/Objectives    📋 Planning/Lists
+📝 Notes/Documentation 🔄 Recurring/Process
+🎓 Learning/Study      🛠️ Tools/Resources
+📅 Events/Timeline     👥 People/Teams
+
+When handling tasks labeled with @elaborate:
+
+1. TASK CLASSIFICATION
+   - Use `list-tasks.js --filter "@elaborate"` to find all tasks
+   - Classify each task as either:
+     a) Research-oriented (needs information gathering)
+     b) Action-oriented (needs breaking down into steps)
+
+2. FOR RESEARCH TASKS:
+   - Create a parent "Research findings:" task
+   - Add specific findings as subtasks
+   - Include direct links to sources
+   - Focus on actionable information
+   - Remove @elaborate label once research is complete
+
+3. FOR ACTION-ORIENTED TASKS:
+   - Create a parent task with appropriate emoji
+   - Break down into 5-7 concrete, actionable subtasks
+   - Include specific metrics where possible (time, frequency, etc.)
+   - Ensure each subtask is self-contained and clear
+   - Remove @elaborate label once broken down
+
+4. BEST PRACTICES:
+   - Always maintain task hierarchy (parent/child relationships)
+   - Include relevant links and references
+   - Use clear numbering for sequential steps
+   - Add time estimates where applicable
+   - Keep subtasks focused and actionable
 
 
+TASK LABELING BEST PRACTICES:
+
+1. ANALYSIS PHASE
+   - First list all tasks in the target project
+   - Review available labels (especially the goal-related ones)
+   - Mentally categorize items before starting to label
+
+2. LABELING EXECUTION
+   - Use batch-label with simple, specific search terms
+   - Process one category at a time
+   - Keep search queries simple and unambiguous
+   - Use single terms when possible to avoid syntax issues
+   - Format: task.js batch-label "p:ProjectName & search:term" --add-labels "Label ★"
+
+3. VALIDATION
+   - After each batch, verify the changes were applied correctly
+   - Watch for error messages and adjust queries as needed
+   - If a complex search fails, break it down into simpler individual searches
+
+4. COMMON PITFALLS TO AVOID
+   - Don't use complex boolean logic in search terms initially
+   - Avoid special characters in search terms when possible
+   - If using multiple search terms, test one first before combining
+   - Watch out for spaces and special characters in label names
+
+5. EFFICIENCY TIPS
+   - Start with the most clearly categorizable items
+   - Use the most specific search terms possible
+   - Process similar items together
+   - Keep track of what's been labeled to avoid duplicates
 
 # Your rule content
 all todoist tools are in @tools/todoist, and are node scripts that you can run to query todoist and update todoist.  You have permission to run them. Please use the tools and do not try and go off piste and create something new. If you find a gap in something that you cannot do, notifiy the user and add it to todoist_gaps.md

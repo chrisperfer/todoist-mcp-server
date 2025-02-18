@@ -19,45 +19,10 @@ async function addProject(name, options = {}) {
         const api = new TodoistApi(token);
 
         try {
-            // If parent project is specified, find its ID
-            let parentId = null;
-            if (options.parent) {
-                const projects = await api.getProjects();
-                const parentPath = options.parent.toLowerCase();
-                
-                // Function to build the full project path
-                const getProjectPath = (project) => {
-                    const path = [project.name];
-                    let current = project;
-                    const projectMap = new Map(projects.map(p => [p.id, p]));
-                    
-                    while (current.parentId) {
-                        const parent = projectMap.get(current.parentId);
-                        if (!parent) break;
-                        path.unshift(parent.name);
-                        current = parent;
-                    }
-                    
-                    return path.join(' » ');
-                };
-
-                // Find parent project by path
-                const parent = projects.find(p => 
-                    getProjectPath(p).toLowerCase().includes(parentPath)
-                );
-
-                if (parent) {
-                    parentId = parent.id;
-                } else {
-                    console.error(`Error: Parent project "${options.parent}" not found`);
-                    process.exit(1);
-                }
-            }
-
-            // Create project object
+            // Create project object with direct parentId if specified
             const projectData = {
                 name: name,
-                ...(parentId && { parentId }),
+                ...(options.parentId && { parentId: options.parentId }),
                 ...(options.color && { color: options.color }),
                 ...(options.favorite && { isFavorite: true }),
                 ...(options.view && { viewStyle: options.view })
@@ -72,7 +37,7 @@ async function addProject(name, options = {}) {
             } else {
                 console.log(`Project created: ${project.id}`);
                 console.log(`Name: ${project.name}`);
-                if (parentId) console.log(`Parent ID: ${parentId}`);
+                if (options.parentId) console.log(`Parent ID: ${options.parentId}`);
                 if (project.color) console.log(`Color: ${project.color}`);
                 if (project.viewStyle) console.log(`View Style: ${project.viewStyle}`);
                 console.log(`Favorite: ${project.isFavorite ? 'Yes' : 'No'}`);
@@ -93,7 +58,7 @@ async function addProject(name, options = {}) {
 const args = process.argv.slice(2);
 const options = {
     json: args.includes('--json'),
-    parent: null,
+    parentId: null,
     color: null,
     view: null,
     favorite: args.includes('--favorite')
@@ -109,8 +74,8 @@ const name = firstFlagIndex === -1
 let i = firstFlagIndex;
 while (i !== -1 && i < args.length) {
     switch (args[i]) {
-        case '--parent':
-            if (i + 1 < args.length) options.parent = args[++i];
+        case '--parentId':
+            if (i + 1 < args.length) options.parentId = args[++i];
             break;
         case '--color':
             if (i + 1 < args.length) options.color = args[++i];

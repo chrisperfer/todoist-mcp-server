@@ -3,7 +3,32 @@
 import { TodoistApi } from '@doist/todoist-api-typescript';
 import url from 'url';
 
-async function updateProject(projectQuery, options = {}) {
+const VALID_COLORS = ['berry_red', 'red', 'orange', 'yellow', 'olive_green', 'lime_green', 'green', 'mint_green', 'teal', 'sky_blue', 'light_blue', 'blue', 'grape', 'violet', 'lavender', 'magenta', 'salmon', 'charcoal', 'grey', 'taupe'];
+const VALID_VIEWS = ['list', 'board'];
+
+function printHelp() {
+    console.log(`
+Usage: update-project.js --id <project_id> [options]
+
+Required:
+    --id <project_id>         Project ID to update
+
+Options:
+    --name <name>            New project name
+    --color <color>          Project color (${VALID_COLORS.join(', ')})
+    --view <view>            View style (${VALID_VIEWS.join(', ')})
+    --favorite               Mark as favorite
+    --no-favorite           Remove from favorites
+    --json                  Output result as JSON
+    --help                  Show this help message
+
+Example:
+    update-project.js --id 123456789 --name "New Name" --color blue --view board
+`);
+    process.exit(0);
+}
+
+async function updateProject(projectId, options = {}) {
     try {
         const token = process.env.TODOIST_API_TOKEN;
         if (!token) {
@@ -11,50 +36,29 @@ async function updateProject(projectQuery, options = {}) {
             process.exit(1);
         }
 
-        if (!projectQuery) {
-            console.error("Error: Project name or ID is required");
+        if (!projectId) {
+            console.error("Error: Project ID is required (use --id)");
+            process.exit(1);
+        }
+
+        // Validate color if provided
+        if (options.color && !VALID_COLORS.includes(options.color)) {
+            console.error(`Error: Invalid color. Valid colors are: ${VALID_COLORS.join(', ')}`);
+            process.exit(1);
+        }
+
+        // Validate view if provided
+        if (options.view && !VALID_VIEWS.includes(options.view)) {
+            console.error(`Error: Invalid view style. Valid views are: ${VALID_VIEWS.join(', ')}`);
             process.exit(1);
         }
         
         const api = new TodoistApi(token);
 
         try {
-            // Get all projects to find the one to update
-            const projects = await api.getProjects();
+            // Verify project exists
+            const project = await api.getProject(projectId);
             
-            // Function to build the full project path
-            const getProjectPath = (project) => {
-                const path = [project.name];
-                let current = project;
-                const projectMap = new Map(projects.map(p => [p.id, p]));
-                
-                while (current.parentId) {
-                    const parent = projectMap.get(current.parentId);
-                    if (!parent) break;
-                    path.unshift(parent.name);
-                    current = parent;
-                }
-                
-                return path.join(' » ');
-            };
-
-            // Find the project to update
-            const project = projects.find(p => 
-                (typeof projectQuery === 'string' && p.id === projectQuery) || 
-                getProjectPath(p).toLowerCase().includes(projectQuery.toLowerCase())
-            );
-
-            if (!project) {
-                console.error(`Error: Project "${projectQuery}" not found`);
-                process.exit(1);
-            }
-
-            console.error("Debug: Found project to update:", {
-                id: project.id,
-                name: project.name,
-                path: getProjectPath(project)
-            });
-
             // Create update object
             const updateData = {
                 ...(options.name && { name: options.name }),
@@ -63,23 +67,11 @@ async function updateProject(projectQuery, options = {}) {
                 ...(options.favorite !== undefined && { isFavorite: options.favorite })
             };
 
-            console.error("Debug: Original project:", {
-                id: project.id,
-                parentId: project.parentId,
-                name: project.name,
-                path: getProjectPath(project)
-            });
-
             // Update the project
-            try {
-                await api.updateProject(project.id, updateData);
-            } catch (updateError) {
-                console.error("API Error:", updateError.message);
-                throw updateError;
-            }
+            await api.updateProject(projectId, updateData);
             
             // Get updated project
-            const updatedProject = await api.getProject(project.id);
+            const updatedProject = await api.getProject(projectId);
 
             // Output the updated project
             if (options.json) {
@@ -87,7 +79,6 @@ async function updateProject(projectQuery, options = {}) {
             } else {
                 console.log(`Project updated: ${updatedProject.id}`);
                 console.log(`Name: ${updatedProject.name}`);
-                console.log(`Path: ${getProjectPath(updatedProject)}`);
                 if (updatedProject.parentId) console.log(`Parent ID: ${updatedProject.parentId}`);
                 if (updatedProject.color) console.log(`Color: ${updatedProject.color}`);
                 if (updatedProject.viewStyle) console.log(`View Style: ${updatedProject.viewStyle}`);
@@ -96,17 +87,26 @@ async function updateProject(projectQuery, options = {}) {
             }
 
         } catch (apiError) {
-            console.error("API Error:", apiError.message);
-            throw apiError;
+            if (apiError.httpStatusCode === 404) {
+                console.error(`Error: Project with ID "${projectId}" not found`);
+            } else {
+                console.error("API Error:", apiError.message);
+            }
+            process.exit(1);
         }
     } catch (error) {
-        console.error("Error in script:", error.message);
+        console.error("Error:", error.message);
         process.exit(1);
     }
 }
 
 // Parse command line arguments
 const args = process.argv.slice(2);
+
+if (args.includes('--help')) {
+    printHelp();
+}
+
 const options = {
     json: args.includes('--json'),
     name: null,
@@ -114,16 +114,14 @@ const options = {
     view: null
 };
 
-// Get project query (everything before the first -- flag)
-const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-const projectQuery = firstFlagIndex === -1 
-    ? args.join(' ')
-    : args.slice(0, firstFlagIndex).join(' ');
+let projectId = null;
 
-// Parse other options
-let i = firstFlagIndex;
-while (i !== -1 && i < args.length) {
+// Parse options
+for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
+        case '--id':
+            if (i + 1 < args.length) projectId = args[++i];
+            break;
         case '--name':
             if (i + 1 < args.length) options.name = args[++i];
             break;
@@ -140,12 +138,11 @@ while (i !== -1 && i < args.length) {
             options.favorite = false;
             break;
     }
-    i++;
 }
 
 // Run if called directly
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-    updateProject(projectQuery, options);
+    updateProject(projectId, options);
 }
 
 export { updateProject }; 

@@ -331,11 +331,11 @@ async function addTask(api, content, options = {}) {
     // Create task object
     const taskData = {
         content: content,
-        ...(projectId && { projectId }),
-        ...(parentId && { parentId }),
+        ...(projectId && { project_id: projectId }),
+        ...(parentId && { parent_id: parentId }),
         ...(options.priority && { priority: parseInt(options.priority) }),
-        ...(options.dueString && { dueString: options.dueString }),
-        ...(options.dueDate && { dueDate: options.dueDate }),
+        ...(options.dueString && { date_string: options.dueString }),
+        ...(options.dueDate && { date: options.dueDate }),
         ...(options.labels && { labels: options.labels.split(',').map(l => l.trim()) })
     };
 
@@ -624,12 +624,193 @@ async function batchLabelTask(api, filter, options) {
     }
 }
 
+function parseBatchAddOptions(args) {
+    const options = {
+        tasks: [],
+        destination: null,
+        id: null,
+        priority: null,
+        dueString: null,
+        dueDate: null,
+        labels: null
+    };
+
+    // First argument should be a newline-separated list of tasks
+    if (args.length === 0) {
+        console.error("Error: Task list is required for batch-add");
+        process.exit(1);
+    }
+
+    // Split by literal \n or actual newlines and clean up
+    options.tasks = args[0]
+        .split(/\\n|\n/)
+        .map(t => t.trim())
+        .filter(t => t);
+    args = args.slice(1);
+
+    // Collect destination flags
+    const destinationFlags = args.filter(arg => 
+        arg === '--to-project' || 
+        arg === '--to-section' || 
+        arg === '--to-parent'
+    );
+
+    if (destinationFlags.length > 1) {
+        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
+        console.error("Use only one of: --to-project, --to-section, --to-parent");
+        process.exit(1);
+    }
+
+    let i = 0;
+    while (i < args.length) {
+        switch (args[i]) {
+            case '--to-project':
+            case '--to-section':
+            case '--to-parent':
+                if (i + 1 < args.length) {
+                    options.destination = args[i].replace('--to-', '');
+                    options.id = args[++i];
+                }
+                break;
+            case '--priority':
+                if (i + 1 < args.length) options.priority = args[++i];
+                break;
+            case '--due-string':
+                if (i + 1 < args.length) options.dueString = args[++i];
+                break;
+            case '--due-date':
+                if (i + 1 < args.length) options.dueDate = args[++i];
+                break;
+            case '--labels':
+                if (i + 1 < args.length) options.labels = args[++i];
+                break;
+        }
+        i++;
+    }
+
+    return options;
+}
+
+async function batchAddTask(api, options) {
+    let projectId = null;
+    let parentId = null;
+    let sectionId = null;
+
+    // Resolve destination
+    if (options.destination) {
+        switch (options.destination) {
+            case 'parent':
+                try {
+                    parentId = await resolveTaskId(api, options.id);
+                    // Parent task's project is implied
+                    const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                    if (parentTask) projectId = parentTask.projectId;
+                } catch (error) {
+                    console.error(`Error: Parent task "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
+
+            case 'section':
+                try {
+                    sectionId = await resolveSectionId(api, options.id);
+                    // Get section's project
+                    const sections = await api.getSections();
+                    const section = sections.find(s => s.id === sectionId);
+                    if (section) projectId = section.projectId;
+                } catch (error) {
+                    console.error(`Error: Section "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
+
+            case 'project':
+                try {
+                    projectId = await resolveProjectId(api, options.id);
+                } catch (error) {
+                    console.error(`Error: Project "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
+        }
+    }
+
+    // Create commands for each task
+    const commands = options.tasks.map(content => {
+        const taskData = {
+            content,
+            ...(projectId && { project_id: projectId }),
+            ...(parentId && { parent_id: parentId }),
+            ...(sectionId && { section_id: sectionId }),
+            ...(options.priority && { priority: parseInt(options.priority) }),
+            ...(options.dueString && { date_string: options.dueString }),
+            ...(options.dueDate && { date: options.dueDate }),
+            ...(options.labels && { labels: options.labels.split(',').map(l => l.trim()) })
+        };
+
+        return {
+            type: 'item_add',
+            temp_id: randomUUID(),
+            uuid: randomUUID(),
+            args: taskData
+        };
+    });
+
+    // Execute all commands in one request
+    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
+
+    // Get the created tasks
+    const createdTasks = await api.getTasks();
+    const justCreatedTasks = createdTasks.filter(task => 
+        options.tasks.includes(task.content) && 
+        (!projectId || task.projectId === projectId) &&
+        (!parentId || task.parentId === parentId) &&
+        (!sectionId || task.sectionId === sectionId)
+    );
+
+    if (options.json) {
+        console.log(JSON.stringify({
+            tasks: justCreatedTasks,
+            destination: {
+                type: options.destination,
+                id: options.id,
+                project: projectId,
+                section: sectionId,
+                parent: parentId
+            },
+            status: 'added',
+            count: justCreatedTasks.length
+        }, null, 2));
+    } else {
+        console.log(`Added ${justCreatedTasks.length} tasks:`);
+        for (const task of justCreatedTasks) {
+            console.log(`- ${task.content} (${task.id})`);
+        }
+        if (projectId) {
+            const projectPath = await getProjectPath(api, projectId);
+            console.log(`To project: ${projectPath}`);
+        }
+        if (sectionId) {
+            const sections = await api.getSections();
+            const section = sections.find(s => s.id === sectionId);
+            console.log(`To section: ${section ? section.name : 'unknown'}`);
+        }
+        if (parentId) {
+            const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+            console.log(`Under parent: ${parentTask ? parentTask.content : parentId}`);
+        }
+        if (options.priority) console.log(`Priority: ${options.priority}`);
+        if (options.dueString || options.dueDate) console.log(`Due: ${options.dueString || options.dueDate}`);
+        if (options.labels) console.log(`Labels: ${options.labels}`);
+    }
+}
+
 async function main() {
     try {
         const args = process.argv.slice(2);
         
         if (args.length === 0) {
-            console.error("Error: Subcommand required (add, update, move, batch-move, batch-label, or complete)");
+            console.error("Error: Subcommand required (add, batch-add, update, move, batch-move, batch-label, or complete)");
             process.exit(1);
         }
         
@@ -647,6 +828,14 @@ async function main() {
                 const content = subcommandArgs[0];
                 const addOptions = parseAddOptions(subcommandArgs.slice(1));
                 await addTask(api, content, { ...addOptions, json: args.includes('--json') });
+                break;
+            case 'batch-add':
+                if (subcommandArgs.length === 0) {
+                    console.error("Error: Task list is required");
+                    process.exit(1);
+                }
+                const batchAddOptions = parseBatchAddOptions(subcommandArgs);
+                await batchAddTask(api, { ...batchAddOptions, json: args.includes('--json') });
                 break;
             case 'move':
                 const { taskQuery, options: baseOptions, remainingArgs } = parseBaseOptions(subcommandArgs);
