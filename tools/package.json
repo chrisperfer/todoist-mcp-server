@@ -27,15 +27,21 @@
     "todoist:list-tasks": {
       "description": "List tasks with filtering options",
       "options": [
-        "--project \"<name>\"  Filter tasks by project name",
-        "--section \"<name>\"  Filter tasks by section name",
-        "--label \"<name>\"    Filter tasks by label",
-        "--filter \"<query>\"   Filter tasks using Todoist query syntax"
+        "--filter \"<query>\"   Filter tasks using Todoist query syntax (recommended)",
+        "--projectId \"<id>\"   Filter tasks by project ID (numeric only)",
+        "--label \"<n>\"       Filter tasks by label",
+        "--json               Output in JSON format",
+        "--detailed          Show detailed task information"
       ],
       "examples": [
-        "npm run todoist:list-tasks -- --project Learn",
-        "npm run todoist:list-tasks -- --section \"Languages\"",
-        "npm run todoist:list-tasks -- --label \"@Next\"",
+        "# Filtering by project name (recommended)",
+        "npm run todoist:list-tasks -- --filter \"p:Learn\"",
+        "npm run todoist:list-tasks -- --filter \"(p:Work | p:Personal) & @important\"",
+        "",
+        "# Filtering by project ID",
+        "npm run todoist:list-tasks -- --projectId 2345957782",
+        "",
+        "# Other common filters",
         "npm run todoist:list-tasks -- --filter \"today\"",
         "npm run todoist:list-tasks -- --filter \"overdue\"",
         "npm run todoist:list-tasks -- --filter \"priority 4\"",
@@ -53,14 +59,19 @@
         "npm run todoist:list-tasks -- --filter \"(@Next | @Goals: Growth) & !completed\""
       ],
       "notes": [
+        "Project filtering best practices:",
+        "1. Use --filter with p: syntax for project name filtering (recommended)",
+        "2. Use --projectId for direct ID filtering when ID is known",
+        "",
         "Filter operators: & (and), | (or), ! (not)",
         "Date keywords: today, tomorrow, yesterday, next week, last week, no date",
         "Relative dates: +7 days, -2 weeks",
         "Special filters: overdue, recurring, completed, subtask",
         "Priority levels: p1 (highest) to p4 (lowest)",
-        "Project syntax: #ProjectName",
+        "Project syntax: p:ProjectName or #ProjectName",
         "Label syntax: @LabelName",
-        "Section syntax: *SectionName"
+        "Section syntax: *SectionName",
+        "Use --detailed flag to see task IDs for more reliable task targeting"
       ]
     },
     "todoist:list-projects": {

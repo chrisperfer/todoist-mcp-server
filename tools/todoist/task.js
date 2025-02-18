@@ -37,13 +37,12 @@ async function moveTask(api, task, options) {
 
         case 'section':
             try {
-                const sectionId = await resolveSectionId(api, options.id);
-                targetId = { section_id: sectionId };
-                // Section's project is implied
-                const section = (await api.getSections()).find(s => s.id === sectionId);
-                if (section) projectId = section.projectId;
+                targetId = { section_id: options.id };
+                // Section's project is implied - we'll get it from the task data
+                const task = await api.getTask(task.id);
+                if (task) projectId = task.projectId;
             } catch (error) {
-                console.error(`Error: Section "${options.id}" not found`);
+                console.error(`Error moving task to section "${options.id}"`);
                 process.exit(1);
             }
             break;
@@ -444,13 +443,12 @@ async function batchMoveTask(api, filter, options) {
 
         case 'section':
             try {
-                const sectionId = await resolveSectionId(api, options.id);
-                targetId = { section_id: sectionId };
-                // Section's project is implied
-                const section = (await api.getSections()).find(s => s.id === sectionId);
-                if (section) projectId = section.projectId;
+                targetId = { section_id: options.id };
+                // Section's project is implied - we'll get it from the task data
+                const task = tasks ? tasks[0] : await api.getTask(task.id);
+                if (task) projectId = task.projectId;
             } catch (error) {
-                console.error(`Error: Section "${options.id}" not found`);
+                console.error(`Error moving task to section "${options.id}"`);
                 process.exit(1);
             }
             break;

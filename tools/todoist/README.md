@@ -23,8 +23,8 @@ The list commands are your primary tools for discovering IDs:
 list-tasks [options]
 
 Options:
-  --filter <query>     Use Todoist filter syntax (see examples below)
-  --project <name|id>  Filter by project
+  --filter <query>     Use Todoist filter syntax (recommended, see examples below)
+  --projectId <id>     Filter tasks by project ID (numeric only)
   --label <label>     Filter by label (can be used multiple times)
   --json              Output in JSON format
   --detailed          Show detailed task information
@@ -69,6 +69,34 @@ list-tasks --filter "(today | overdue) & @important & ##Work"
 ```
 
 For more filter syntax, see [Todoist's filter documentation](https://todoist.com/help/articles/205280588-search-and-filter).
+
+### Project Filtering Best Practices
+
+When filtering tasks by project, you have two options:
+
+1. Using Todoist filter syntax (Recommended):
+```bash
+# Filter by project name (flexible, preferred method)
+list-tasks --filter "p:Project Name"
+list-tasks --filter "(p:Project1 | p:Project2) & @important"
+
+# Complex project filters
+list-tasks --filter "p:Work & !p:Work/Archive"
+```
+
+2. Using project ID:
+```bash
+# First find the project ID
+list-projects
+# Then filter by ID
+list-tasks --projectId 123456789
+```
+
+The filter syntax is more powerful and flexible, supporting:
+- Partial name matching
+- Multiple projects
+- Complex conditions
+- Case-insensitive matching
 
 ## Task Command
 

@@ -52,27 +52,6 @@ async function listTasks(options = {}) {
                 return /^\d+$/.test(str);
             };
 
-            // Function to do smart project name matching
-            const matchesProjectName = (projectPath, filter) => {
-                // Split into words and normalize
-                const projectWords = projectPath.toLowerCase().split(/[\s»]+/).filter(w => w);
-                const filterWords = filter.toLowerCase().split(/\s+/).filter(w => w);
-                
-                // For single word matching, try partial matches
-                if (filterWords.length === 1) {
-                    return projectWords.some(word => 
-                        word.includes(filterWords[0]) || filterWords[0].includes(word)
-                    );
-                }
-                
-                // For multi-word matching, require all words to match
-                return filterWords.every(filterWord => 
-                    projectWords.some(projectWord => 
-                        projectWord.includes(filterWord) || filterWord.includes(projectWord)
-                    )
-                );
-            };
-
             // Function to get section name with project context
             const getSectionInfo = (task) => {
                 if (!task.sectionId) return null;
@@ -84,20 +63,15 @@ async function listTasks(options = {}) {
             // Filter tasks by project if specified
             let filteredTasks = tasks;
             if (options.project) {
-                if (isProjectId(options.project)) {
-                    // If it's a numeric ID, do direct ID matching
-                    const projectId = options.project;
-                    filteredTasks = tasks.filter(task => String(task.projectId) === projectId);
-                } else {
-                    // If it's a name, do name matching
-                    filteredTasks = tasks.filter(task => {
-                        const projectPath = getProjectPath(task.projectId);
-                        return matchesProjectName(projectPath, options.project);
-                    });
+                if (!isProjectId(options.project)) {
+                    console.error("Error: --projectId parameter must be a numeric project ID. Use --filter 'p:Project Name' to filter by project name.");
+                    process.exit(1);
                 }
+                const projectId = options.project;
+                filteredTasks = tasks.filter(task => String(task.projectId) === projectId);
 
                 if (filteredTasks.length === 0) {
-                    console.log(`No tasks found in projects matching "${options.project}"`);
+                    console.log(`No tasks found in project with ID "${options.project}"`);
                     return;
                 }
             }
@@ -229,7 +203,7 @@ const options = {
 };
 
 // Get project filter if specified
-const projectIndex = process.argv.indexOf('--project');
+const projectIndex = process.argv.indexOf('--projectId');
 if (projectIndex !== -1 && projectIndex + 1 < process.argv.length) {
     options.project = process.argv[projectIndex + 1];
 }
@@ -257,12 +231,21 @@ Usage: list-tasks [options]
 Options:
   --json                Output in JSON format
   --detailed           Show detailed task information
-  --project <name>     Filter tasks by project name or ID
+  --projectId <id>     Filter tasks by project ID (numeric only)
   --label <label>      Filter tasks by label (can be used multiple times)
-  --filter <filter>    Use Todoist filter query (see examples below)
+  --filter <filter>    Use Todoist filter query (recommended, see examples below)
   --help              Show this help message
 
-Filter Examples:
+Project Filtering:
+  1. Using filter (Recommended):
+     --filter "p:Project Name"           Filter by project name
+     --filter "(p:Project1 | p:Project2)" Filter by multiple projects
+     --filter "p:Work & !p:Work/Archive"  Complex project filters
+
+  2. Using project ID:
+     --projectId 123456789              Filter by specific project ID
+
+Other Filter Examples:
   --filter "today"                     Show today's tasks
   --filter "overdue"                   Show overdue tasks
   --filter "priority 4"                Show high priority tasks

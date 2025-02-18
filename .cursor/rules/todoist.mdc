@@ -1,7 +1,59 @@
 ---
 description: run todoist tools
-globs: 
+globs: *.*
 ---
+
+# Tools
+all todoist tools are in @tools/todoist.
+
+# General Process to Follow
+1. Always check tool documentation (--help) before attempting usage
+2. If something is not clear, there is more detailed documentation in README.md
+3. Follow recommended approaches unless there's a specific reason not to
+4. Parse and use IDs/references correctly when needed
+5. Leverage support for ToDoist-syntax filters to find tasks via the --filter parameter
+6. Look for the most direct solution (path of least resistance)
+7. If you find a gap in something that you cannot do, or something that seems cumbersome to do, notifiy the user and add it to todoist_gaps.md
+
+#Recommended Approaches
+- For listing tasks by project ALWAYS USE UNLESS IMPOSSIBLE: node tools/todoist/list-tasks.js --filter "p:Project Name"
+- alternate, though less effiicient: 
+    - Get project ID: node tools/todoist/list-projects.js
+    - node tools/todoist/list-tasks.js --projectId <id>
+
+- For organizing tasks by section,  
+
+1. DISCOVERY
+   - List project tasks first (list-tasks.js --filter "p:Project Name")
+   - Check existing sections (list-sections.js --project <id>)
+   - Analyze tasks for natural groupings
+
+2. SECTION CREATION
+   - Create broad, non-overlapping categories
+   - Use clear, descriptive section names
+   - Add sections one at a time (add-section.js)
+   - Verify section creation before proceeding
+
+3. TASK MOVEMENT
+   - Use batch-move with specific search terms for example: node tools/todoist/task.js batch-move "p:Electric Car & search:Jeep" --to-section 183465496
+   - Move most specific/clear tasks first
+   - Use multiple search terms in filters when needed (search:term1 | search:term2)
+   - Verify after each batch move
+   - Handle remaining tasks individually if needed
+
+4. VERIFICATION
+   - List all tasks again to verify organization
+   - Check for tasks in unexpected sections
+   - Ensure no tasks are left unsectioned
+
+Best Practices:
+- Keep section names consistent with existing project organization
+- Use search terms that are unique enough to avoid false matches
+- Consider task relationships when creating sections
+- Document any tasks that could belong in multiple sections
+
+
+
 
 # Your rule content
 all todoist tools are in @tools/todoist, and are node scripts that you can run to query todoist and update todoist.  You have permission to run them. Please use the tools and do not try and go off piste and create something new. If you find a gap in something that you cannot do, notifiy the user and add it to todoist_gaps.md
