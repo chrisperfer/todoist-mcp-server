@@ -10,6 +10,11 @@ import {
     formatJsonOutput,
     parseBaseOptions
 } from './lib/task-utils.js';
+import {
+    resolveTaskId,
+    resolveProjectId,
+    resolveSectionId
+} from './lib/id-utils.js';
 
 async function moveTask(api, task, options) {
     const projects = await api.getProjects();
@@ -262,38 +267,151 @@ function parseUpdateOptions(args) {
     return options;
 }
 
+async function addTask(api, content, options = {}) {
+    // If project specified, resolve its ID
+    let projectId = null;
+    if (options.project) {
+        try {
+            projectId = await resolveProjectId(api, options.project);
+        } catch (error) {
+            console.error(`Error: Project "${options.project}" not found`);
+            process.exit(1);
+        }
+    }
+
+    // If parent task specified, resolve its ID
+    let parentId = null;
+    if (options.parent) {
+        try {
+            parentId = await resolveTaskId(api, options.parent);
+            // If no project specified, use parent's project
+            if (!projectId) {
+                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                if (parentTask) projectId = parentTask.projectId;
+            }
+        } catch (error) {
+            console.error(`Error: Parent task "${options.parent}" not found`);
+            process.exit(1);
+        }
+    }
+
+    // Create task object
+    const taskData = {
+        content: content,
+        ...(projectId && { projectId }),
+        ...(parentId && { parentId }),
+        ...(options.priority && { priority: parseInt(options.priority) }),
+        ...(options.dueString && { dueString: options.dueString }),
+        ...(options.dueDate && { dueDate: options.dueDate }),
+        ...(options.labels && { labels: options.labels.split(',').map(l => l.trim()) })
+    };
+
+    // Add the task
+    const task = await api.addTask(taskData);
+
+    if (options.json) {
+        console.log(formatJsonOutput(task, 'created', {
+            project: projectId,
+            parent: parentId,
+            due: task.due,
+            priority: task.priority,
+            labels: task.labels
+        }));
+    } else {
+        console.log(`Task created: ${task.id}`);
+        console.log(`Content: ${task.content}`);
+        if (projectId) {
+            const projectPath = await getProjectPath(api, projectId);
+            console.log(`Project: ${projectPath}`);
+        }
+        if (parentId) console.log(`Parent Task: ${parentId}`);
+        if (task.due) console.log(`Due: ${task.due.date}${task.due.datetime ? ' ' + task.due.datetime : ''}`);
+        if (task.priority) console.log(`Priority: ${task.priority}`);
+        if (task.labels && task.labels.length) console.log(`Labels: @${task.labels.join(' @')}`);
+        console.log(`URL: ${task.url}`);
+    }
+}
+
+function parseAddOptions(args) {
+    const options = {
+        project: null,
+        parent: null,
+        priority: null,
+        dueString: null,
+        dueDate: null,
+        labels: null
+    };
+
+    let i = 0;
+    while (i < args.length) {
+        switch (args[i]) {
+            case '--project':
+                if (i + 1 < args.length) options.project = args[++i];
+                break;
+            case '--parent':
+                if (i + 1 < args.length) options.parent = args[++i];
+                break;
+            case '--priority':
+                if (i + 1 < args.length) options.priority = args[++i];
+                break;
+            case '--due':
+                if (i + 1 < args.length) options.dueString = args[++i];
+                break;
+            case '--date':
+                if (i + 1 < args.length) options.dueDate = args[++i];
+                break;
+            case '--labels':
+                if (i + 1 < args.length) options.labels = args[++i];
+                break;
+        }
+        i++;
+    }
+
+    return options;
+}
+
 async function main() {
     try {
         const args = process.argv.slice(2);
         
         // Get subcommand
         if (args.length === 0) {
-            console.error("Error: Subcommand required (update, move, or complete)");
+            console.error("Error: Subcommand required (add, update, move, or complete)");
             process.exit(1);
         }
         
         const subcommand = args[0];
         const subcommandArgs = args.slice(1);
         
-        // Parse base options
-        const { taskQuery, options: baseOptions, remainingArgs } = parseBaseOptions(subcommandArgs);
-        
-        // Initialize API and find task
+        // Initialize API
         const api = await initializeApi();
-        const task = await findTask(api, taskQuery);
         
         // Execute subcommand
         switch (subcommand) {
+            case 'add':
+                // For add, first argument is content
+                if (subcommandArgs.length === 0) {
+                    console.error("Error: Task content is required");
+                    process.exit(1);
+                }
+                const content = subcommandArgs[0];
+                const addOptions = parseAddOptions(subcommandArgs.slice(1));
+                await addTask(api, content, { ...addOptions, json: args.includes('--json') });
+                break;
             case 'move':
+                const { taskQuery, options: baseOptions, remainingArgs } = parseBaseOptions(subcommandArgs);
+                const task = await findTask(api, taskQuery);
                 await moveTask(api, task, { ...baseOptions, ...parseMoveOptions(remainingArgs) });
                 break;
             case 'update':
             case 'complete':
-                const updateOptions = parseUpdateOptions(remainingArgs);
+                const { taskQuery: updateTaskQuery, options: updateBaseOptions, remainingArgs: updateRemainingArgs } = parseBaseOptions(subcommandArgs);
+                const updateTask = await findTask(api, updateTaskQuery);
+                const updateOptions = parseUpdateOptions(updateRemainingArgs);
                 if (subcommand === 'complete') {
                     updateOptions.complete = true;
                 }
-                await updateTask(api, task, { ...baseOptions, ...updateOptions });
+                await updateTask(api, updateTask, { ...updateBaseOptions, ...updateOptions });
                 break;
             default:
                 console.error(`Error: Unknown subcommand "${subcommand}"`);
@@ -310,4 +428,4 @@ if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
     main();
 }
 
-export { moveTask, updateTask }; 
+export { moveTask, updateTask, addTask }; 

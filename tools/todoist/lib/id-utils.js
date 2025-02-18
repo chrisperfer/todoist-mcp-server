@@ -88,7 +88,7 @@ export async function resolveTaskId(api, idOrQuery) {
     // First try to parse as ID
     const numericId = parseInt(idOrQuery);
     if (!isNaN(numericId)) {
-        const task = (await api.getTasks()).find(t => t.id === numericId);
+        const task = (await api.getTasks()).find(t => t.id === numericId.toString());
         if (task) return task.id;
     }
 
@@ -106,14 +106,44 @@ export async function resolveTaskId(api, idOrQuery) {
 }
 
 export async function resolveProjectId(api, idOrQuery) {
+    const projects = await api.getProjects();
+
     // First try to parse as ID
     const numericId = parseInt(idOrQuery);
     if (!isNaN(numericId)) {
-        const project = (await api.getProjects()).find(p => p.id === numericId);
+        const project = projects.find(p => p.id === numericId.toString());
         if (project) return project.id;
     }
 
-    // If not found or not numeric, search by name
+    // If not found or not numeric, try to match by path
+    const projectMap = new Map(projects.map(p => [p.id, p]));
+    const getProjectPath = (project) => {
+        const path = [project.name];
+        let current = project;
+        
+        while (current.parentId) {
+            const parent = projectMap.get(current.parentId);
+            if (!parent) break;
+            path.unshift(parent.name);
+            current = parent;
+        }
+        
+        return path.join(' » ');
+    };
+
+    // Try exact path match first
+    const projectByPath = projects.find(p => 
+        getProjectPath(p).toLowerCase() === idOrQuery.toLowerCase()
+    );
+    if (projectByPath) return projectByPath.id;
+
+    // Then try partial path match
+    const projectByPartialPath = projects.find(p => 
+        getProjectPath(p).toLowerCase().includes(idOrQuery.toLowerCase())
+    );
+    if (projectByPartialPath) return projectByPartialPath.id;
+
+    // Finally try exact name match
     const matches = await searchProjects(api, idOrQuery, { exactMatch: true });
     if (matches.length === 1) {
         return matches[0].id;

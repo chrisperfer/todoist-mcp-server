@@ -77,15 +77,38 @@ The main command for managing tasks is `task`. It accepts both IDs and names, bu
 ### Basic Usage
 
 ```bash
-task <subcommand> <task-id|query> [options]
+task <subcommand> [options]
 ```
 
 Where:
-- `<subcommand>` is one of: `update`, `move`, or `complete`
-- `<task-id|query>` is either a task ID or content (ID recommended)
+- `<subcommand>` is one of: `add`, `update`, `move`, or `complete`
 - `[options]` are specific to each subcommand
 
 ### Subcommands
+
+#### Add Task
+```bash
+task add <content> [options]
+
+Options:
+  --project <id|name>  Add to project
+  --parent <id|name>   Set parent task
+  --priority <1-4>     Set task priority
+  --due <string>       Set due date using natural language
+  --date <YYYY-MM-DD>  Set specific due date
+  --labels <labels>    Set comma-separated labels
+  --json              Output in JSON format
+
+Examples:
+# Add task with ID-based references (recommended)
+task add "New task" --project 987654321 --parent 123456789
+
+# Add task with name-based references
+task add "New task" --project "Work" --parent "Parent task"
+
+# Add task with additional details
+task add "Important task" --priority 1 --due "tomorrow" --labels "important,work"
+```
 
 #### Update Task
 ```bash
