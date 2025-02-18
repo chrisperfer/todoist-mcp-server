@@ -12,7 +12,22 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "prepare": "npm run build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "todoist:list-tasks": "node tools/todoist/list-tasks.js",
+    "todoist:list-projects": "node tools/todoist/list-projects.js",
+    "todoist:list-labels": "node tools/todoist/list-labels.js",
+    "todoist:list-sections": "node tools/todoist/list-sections.js",
+    "todoist:add-task": "node tools/todoist/add-task.js",
+    "todoist:update-task": "node tools/todoist/update-task.js",
+    "todoist:move-task": "node tools/todoist/move-task.js",
+    "todoist:add-project": "node tools/todoist/add-project.js",
+    "todoist:update-project": "node tools/todoist/update-project.js",
+    "todoist:add-section": "node tools/todoist/add-section.js",
+    "todoist:remove-section": "node tools/todoist/remove-section.js",
+    "todoist:add-comment": "node tools/todoist/add-comment.js",
+    "todoist:auto-tag": "node tools/todoist/auto-tagger.js",
+    "todoist:create-thought": "node tools/todoist/create-thought.js",
+    "todoist:workflow": "node tools/todoist/workflow-tool.js"
   },
   "repository": {
     "type": "git",
@@ -41,5 +56,207 @@
     "@types/node": "^22.10.1",
     "shx": "^0.3.4",
     "typescript": "^5.7.2"
+  },
+  "toolDocs": {
+    "bestPractices": {
+      "notes": [
+        "The -- separator is required when passing arguments to npm scripts (e.g., 'npm run script -- --arg value')",
+        "Always use IDs instead of content/names when possible for more reliable targeting",
+        "Use list-projects --detailed to verify project IDs and structure before creating new projects",
+        "Use list-sections to verify section existence before creating or moving tasks",
+        "Project names are case-sensitive and must match exactly",
+        "When creating sections, verify the project exists first to avoid duplicate projects"
+      ]
+    },
+    "todoist:list-tasks": {
+      "description": "List tasks with filtering options",
+      "options": [
+        "--project \"<name>\"  Filter tasks by project name",
+        "--section \"<name>\"  Filter tasks by section name",
+        "--label \"<name>\"    Filter tasks by label",
+        "--filter \"<query>\"   Filter tasks using Todoist query syntax"
+      ],
+      "examples": [
+        "npm run todoist:list-tasks -- --project Learn",
+        "npm run todoist:list-tasks -- --section \"Languages\"",
+        "npm run todoist:list-tasks -- --label \"@Next\"",
+        "npm run todoist:list-tasks -- --filter \"today\"",
+        "npm run todoist:list-tasks -- --filter \"overdue\"",
+        "npm run todoist:list-tasks -- --filter \"priority 4\"",
+        "npm run todoist:list-tasks -- --filter \"no date & !@waiting\"",
+        "npm run todoist:list-tasks -- --filter \"due before: +7 days\"",
+        "npm run todoist:list-tasks -- --filter \"@Goals: Growth & !@Next\"",
+        "npm run todoist:list-tasks -- --filter \"created: today\"",
+        "npm run todoist:list-tasks -- --filter \"assigned to: me\"",
+        "npm run todoist:list-tasks -- --filter \"recurring\"",
+        "npm run todoist:list-tasks -- --filter \"p1 & due this week\"",
+        "npm run todoist:list-tasks -- --filter \"search: javascript\"",
+        "npm run todoist:list-tasks -- --filter \"#Learn & @Technical Skills\"",
+        "npm run todoist:list-tasks -- --filter \"!subtask & !completed\"",
+        "npm run todoist:list-tasks -- --filter \"due after: yesterday & due before: +2 weeks\"",
+        "npm run todoist:list-tasks -- --filter \"(@Next | @Goals: Growth) & !completed\""
+      ],
+      "notes": [
+        "Filter operators: & (and), | (or), ! (not)",
+        "Date keywords: today, tomorrow, yesterday, next week, last week, no date",
+        "Relative dates: +7 days, -2 weeks",
+        "Special filters: overdue, recurring, completed, subtask",
+        "Priority levels: p1 (highest) to p4 (lowest)",
+        "Project syntax: #ProjectName",
+        "Label syntax: @LabelName",
+        "Section syntax: *SectionName",
+        "Use --detailed flag to see task IDs for more reliable task targeting"
+      ]
+    },
+    "todoist:list-projects": {
+      "description": "List all projects in the Todoist account",
+      "options": [
+        "--filter \"<pattern>\"  Filter projects by name pattern",
+        "--detailed        Show additional project information including sections"
+      ],
+      "examples": [
+        "npm run todoist:list-projects",
+        "npm run todoist:list-projects -- --filter \"Work\"",
+        "npm run todoist:list-projects -- --detailed"
+      ]
+    },
+    "todoist:list-sections": {
+      "description": "List sections within projects",
+      "options": [
+        "--project \"<name>\"  Filter sections by project name"
+      ],
+      "examples": [
+        "npm run todoist:list-sections",
+        "npm run todoist:list-sections -- --project Learn"
+      ]
+    },
+    "todoist:add-task": {
+      "description": "Add a new task to Todoist",
+      "options": [
+        "--content \"<text>\"     Task content (required)",
+        "--project \"<name>\"     Project to add task to",
+        "--section \"<name>\"     Section to add task to",
+        "--parent \"<id>\"        Parent task ID to make this a subtask",
+        "--due \"<date>\"        Due date for the task",
+        "--priority \"<1-4>\"     Task priority (4 is highest)",
+        "--labels \"<labels>\"    Comma-separated list of labels"
+      ],
+      "examples": [
+        "npm run todoist:add-task -- --content \"Learn TypeScript\" --project \"Learn\" --section \"Technical Skills\"",
+        "npm run todoist:add-task -- --content \"Study Italian\" --project \"Learn\" --section \"Languages\" --priority 4",
+        "npm run todoist:add-task -- --content \"Review notes\" --due \"tomorrow\" --labels \"@Next,@Goals: Growth\"",
+        "npm run todoist:add-task -- --content \"Research API docs\" --parent 8851664274"
+      ],
+      "notes": [
+        "The -- after the command is required when passing flags to the script",
+        "Use quotes around values that contain spaces",
+        "Parent, section, and project are mutually exclusive - use only one",
+        "When using --parent, project and section are inherited from the parent task",
+        "Always use task IDs instead of content when specifying parent tasks",
+        "Verify project and section existence before adding tasks to avoid unintended inbox placement"
+      ]
+    },
+    "todoist:update-task": {
+      "description": "Update an existing task",
+      "options": [
+        "--task \"<id/content>\"  Task ID or content to update (required)",
+        "--content \"<text>\"     New task content",
+        "--due \"<date>\"        New due date",
+        "--priority \"<1-4>\"     New priority",
+        "--labels \"<labels>\"    New labels (comma-separated)"
+      ],
+      "examples": [
+        "npm run todoist:update-task -- --task \"Learn TypeScript\" --priority 4",
+        "npm run todoist:update-task -- --task 123456789 --due \"tomorrow\"",
+        "npm run todoist:update-task -- --task \"Study Italian\" --content \"Study Italian grammar\" --labels \"@Next\""
+      ]
+    },
+    "todoist:move-task": {
+      "description": "Move a task to a different project or section",
+      "options": [
+        "--task \"<id/content>\"  Task ID or content to move (required)",
+        "--project \"<name>\"     Target project name",
+        "--section \"<name>\"     Target section name"
+      ],
+      "examples": [
+        "npm run todoist:move-task -- --task \"Learn TypeScript\" --section \"Technical Skills\"",
+        "npm run todoist:move-task -- --task 123456789 --project \"Work\"",
+        "npm run todoist:move-task -- --task \"Study Italian\" --project \"Learn\" --section \"Languages\""
+      ],
+      "notes": [
+        "Always use task IDs instead of content when possible",
+        "Verify section existence before moving tasks",
+        "Moving to non-existent sections will fail rather than create new ones",
+        "Project and section names are case-sensitive"
+      ]
+    },
+    "todoist:add-project": {
+      "description": "Create a new project",
+      "options": [
+        "--name \"<name>\"       Project name (required)",
+        "--parent \"<name>\"     Parent project name for nesting",
+        "--color \"<color>\"     Project color",
+        "--favorite            Set as favorite project"
+      ],
+      "examples": [
+        "npm run todoist:add-project -- --name \"New Project\"",
+        "npm run todoist:add-project -- --name \"Subproject\" --parent \"Main Project\"",
+        "npm run todoist:add-project -- --name \"Important Project\" --color \"red\" --favorite"
+      ]
+    },
+    "todoist:update-project": {
+      "description": "Update an existing project",
+      "options": [
+        "--project \"<name>\"    Project to update (required)",
+        "--name \"<name>\"      New project name",
+        "--color \"<color>\"    New project color",
+        "--favorite           Set as favorite",
+        "--no-favorite       Remove from favorites"
+      ],
+      "examples": [
+        "npm run todoist:update-project -- --project \"Old Name\" --name \"New Name\"",
+        "npm run todoist:update-project -- --project \"Project\" --color \"blue\" --favorite"
+      ]
+    },
+    "todoist:add-section": {
+      "description": "Add a new section to a project",
+      "options": [
+        "--name \"<name>\"       Section name (required)",
+        "--project \"<name>\"    Project name (required)"
+      ],
+      "examples": [
+        "npm run todoist:list-projects -- --detailed  # First verify project exists and get ID",
+        "npm run todoist:add-section -- \"New Section\" --project \"Learn\"",
+        "npm run todoist:add-section -- \"Planning\" --project 2345957782  # Using project ID is more reliable"
+      ],
+      "notes": [
+        "Always verify project existence first using list-projects --detailed",
+        "Using project ID instead of name is more reliable",
+        "Project names are case-sensitive and must match exactly",
+        "If project isn't found, the command will fail rather than create a new project"
+      ]
+    },
+    "todoist:workflow": {
+      "description": "Process sequential thoughts with visual feedback",
+      "options": [
+        "JSON input with thought structure (see workflow documentation)",
+        "--waitSeconds <n>     Pause duration between thoughts",
+        "--branchId \"<id>\"     Branch identifier for parallel paths"
+      ],
+      "examples": [
+        "echo '{\"thought\":\"Initial thought\",\"thoughtNumber\":1,\"totalThoughts\":3,\"nextThoughtNeeded\":true}' > /tmp/thought.json && npm run todoist:workflow < /tmp/thought.json"
+      ]
+    },
+    "todoist:auto-tag": {
+      "description": "Automatically tag tasks based on content and patterns",
+      "options": [
+        "--project \"<name>\"    Project to auto-tag",
+        "--dry-run            Show proposed changes without applying"
+      ],
+      "examples": [
+        "npm run todoist:auto-tag -- --project \"Learn\"",
+        "npm run todoist:auto-tag -- --dry-run"
+      ]
+    }
   }
 }

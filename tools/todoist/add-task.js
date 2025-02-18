@@ -117,6 +117,7 @@ async function addTask(content, options = {}) {
 const args = process.argv.slice(2);
 const options = {
     json: args.includes('--json'),
+    content: null,
     project: null,
     parent: null,
     priority: null,
@@ -125,41 +126,49 @@ const options = {
     labels: []
 };
 
-// Get task content (everything before the first -- flag or all args if no flags)
-const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-const content = firstFlagIndex === -1 
-    ? args.join(' ')
-    : args.slice(0, firstFlagIndex).join(' ');
+// Parse flags and their values
+for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) continue;
 
-// Parse other options
-let i = firstFlagIndex;
-while (i !== -1 && i < args.length) {
-    switch (args[i]) {
+    const value = i + 1 < args.length ? args[i + 1] : null;
+    if (!value || value.startsWith('--')) continue;
+
+    switch (arg) {
+        case '--content':
+            options.content = value;
+            i++;
+            break;
         case '--project':
-            if (i + 1 < args.length) options.project = args[++i];
+            options.project = value;
+            i++;
             break;
         case '--parent':
-            if (i + 1 < args.length) options.parent = args[++i];
+            options.parent = value;
+            i++;
             break;
         case '--priority':
-            if (i + 1 < args.length) options.priority = args[++i];
+            options.priority = value;
+            i++;
             break;
         case '--due':
-            if (i + 1 < args.length) options.dueString = args[++i];
+            options.dueString = value;
+            i++;
             break;
         case '--date':
-            if (i + 1 < args.length) options.dueDate = args[++i];
+            options.dueDate = value;
+            i++;
             break;
         case '--label':
-            if (i + 1 < args.length) options.labels.push(args[++i]);
+            options.labels.push(value);
+            i++;
             break;
     }
-    i++;
 }
 
 // Run if called directly
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-    addTask(content, options);
+    addTask(options.content, options);
 }
 
 export { addTask }; 
