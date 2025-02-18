@@ -80,6 +80,37 @@ export async function executeSyncCommand(token, command) {
     return result;
 }
 
+async function executeSyncCommands(token, commands) {
+    const response = await fetch('https://api.todoist.com/sync/v9/sync', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ commands })
+    });
+
+    const result = await response.json();
+    
+    if (!result.sync_status) {
+        throw new Error("No sync status in response");
+    }
+
+    // Check all command statuses
+    const errors = [];
+    for (const [uuid, status] of Object.entries(result.sync_status)) {
+        if (status !== 'ok' && status !== true) {
+            errors.push(`Command ${uuid}: ${status.error || status}`);
+        }
+    }
+
+    if (errors.length > 0) {
+        throw new Error(errors.join('\n'));
+    }
+
+    return result;
+}
+
 export function formatJsonOutput(task, status, details = {}) {
     return JSON.stringify({
         task: {
@@ -91,7 +122,7 @@ export function formatJsonOutput(task, status, details = {}) {
     }, null, 2);
 }
 
-export function parseBaseOptions(args) {
+function parseBaseOptions(args) {
     const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
     const taskQuery = firstFlagIndex === -1 
         ? args.join(' ')
@@ -103,4 +134,6 @@ export function parseBaseOptions(args) {
     };
 
     return { taskQuery, options, remainingArgs: args.slice(firstFlagIndex) };
-} 
+}
+
+export { parseBaseOptions, executeSyncCommands }; 

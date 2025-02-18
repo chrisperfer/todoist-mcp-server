@@ -90,9 +90,11 @@ Where:
 ```bash
 task add <content> [options]
 
-Options:
-  --project <id|name>  Add to project
-  --parent <id|name>   Set parent task
+Where:
+- <content> is the task content/description
+- [options] can include:
+  --to-project <id>    Add to project (root level)
+  --to-parent <id>     Add under parent task (project implied)
   --priority <1-4>     Set task priority
   --due <string>       Set due date using natural language
   --date <YYYY-MM-DD>  Set specific due date
@@ -100,15 +102,20 @@ Options:
   --json              Output in JSON format
 
 Examples:
-# Add task with ID-based references (recommended)
-task add "New task" --project 987654321 --parent 123456789
+# Add task to project root
+task add "New task" --to-project 987654321
 
-# Add task with name-based references
-task add "New task" --project "Work" --parent "Parent task"
+# Add subtask (project inherited from parent)
+task add "Subtask" --to-parent 123456789
 
 # Add task with additional details
-task add "Important task" --priority 1 --due "tomorrow" --labels "important,work"
+task add "Important task" --to-project 987654321 --priority 1 --due "tomorrow" --labels "important,work"
 ```
+
+Note: The destination hierarchy is enforced:
+- When adding under a parent task, the project is implied by the parent
+- Only one destination can be specified (--to-project or --to-parent)
+- Tasks cannot be directly added to sections (create in project then move)
 
 #### Update Task
 ```bash
@@ -132,19 +139,70 @@ Options:
 
 #### Move Task
 ```bash
-# Using IDs (recommended)
-task move 123456789 --project 987654321
+task move <task> --to-[destination-type] <id>
 
-# Using names (falls back to exact match)
-task move "Task name" --project "Project name"
+Where:
+- <task> is the task ID or content to move
+- destination-type is one of: project, section, or parent
+- <id> is the ID of the destination
 
-Options:
-  --project <id|name>  Move to project
-  --section <id|name>  Move to section
-  --no-section       Remove from current section
-  --parent <id|name>  Set parent task
-  --no-parent       Remove parent (move to root)
-  --json            Output in JSON format
+Examples:
+# Move task to root of a project
+task move 123456789 --to-project 987654321
+
+# Move task to a section (project is implied)
+task move 123456789 --to-section 456789123
+
+# Move task under another task (project and section are implied)
+task move 123456789 --to-parent 789123456
+```
+
+Note: The destination hierarchy is strictly enforced:
+- When moving to a parent task, both project and section are implied by the parent
+- When moving to a section, the project is implied by the section
+- When moving to a project, the task is placed at the root level
+- Only one destination can be specified (--to-project, --to-section, or --to-parent)
+
+### Batch Move Tasks
+```bash
+task batch-move <filter> --to-[destination-type] <id>
+
+Where:
+- <filter> is a Todoist filter query (e.g. "##Project" or "@label")
+- destination-type is one of: project, section, or parent
+- <id> is the ID of the destination
+
+Examples:
+# Move all tasks from FLOOBY project to Technical Debt section
+task batch-move "##FLOOBY" --to-section 172860480
+
+# Move all high priority tasks to a project
+task batch-move "p1" --to-project 987654321
+
+# Move all tasks with a label under a parent task
+task batch-move "@waiting" --to-parent 123456789
+```
+
+The same destination hierarchy rules apply to batch moves as to single task moves.
+
+### Finding IDs
+
+To find the IDs needed for move operations:
+
+```bash
+# Find task IDs
+list-tasks --filter "your search"
+
+# Find project IDs
+list-projects
+
+# Find section IDs
+list-sections --project <project-id>
+
+# Search for any type
+search task "search term"
+search project "search term"
+search section "search term"
 ```
 
 #### Complete Task
@@ -157,6 +215,27 @@ task complete "Task name"
 
 Options:
   --json            Output in JSON format
+```
+
+#### Batch Label Tasks
+```bash
+task batch-label <filter> [options]
+
+Options:
+  --labels <labels>        Set labels for all matching tasks
+  --add-labels <labels>    Add labels to existing ones
+  --remove-labels <labels> Remove specific labels
+  --json                   Output in JSON format
+
+Examples:
+# Set labels for all tasks in FLOOBY project
+task batch-label "##FLOOBY" --labels "flooby,important"
+
+# Add labels to all tasks in a section
+task batch-label "##FLOOBY/Section" --add-labels "urgent,high-priority"
+
+# Remove labels from all tasks with a specific label
+task batch-label "@old-label" --remove-labels "old-label"
 ```
 
 ### Examples

@@ -7,6 +7,7 @@ import {
     findTask,
     getProjectPath,
     executeSyncCommand,
+    executeSyncCommands,
     formatJsonOutput,
     parseBaseOptions
 } from './lib/task-utils.js';
@@ -17,65 +18,45 @@ import {
 } from './lib/id-utils.js';
 
 async function moveTask(api, task, options) {
-    const projects = await api.getProjects();
-    const sections = await api.getSections();
-
-    // Find target project if specified
-    let projectId = task.projectId;
-    if (options.project) {
-        const project = projects.find(p => 
-            p.id === options.project ||
-            p.name === options.project ||
-            p.name.toLowerCase().includes(options.project.toLowerCase())
-        );
-
-        if (!project) {
-            console.error(`Error: Project "${options.project}" not found`);
-            process.exit(1);
-        }
-        projectId = project.id;
-    }
-
-    // Find target project and section or parent task
     let targetId;
-    if (options.parent !== undefined) {
-        if (options.parent === null) {
-            targetId = { project_id: projectId };
-        } else {
-            const tasks = await api.getTasks();
-            const parentTask = tasks.find(t => 
-                t.id === options.parent || 
-                t.content.toLowerCase().includes(options.parent.toLowerCase())
-            );
+    let projectId;
 
-            if (!parentTask) {
-                console.error(`Error: Parent task "${options.parent}" not found`);
+    switch (options.destination) {
+        case 'parent':
+            try {
+                const parentId = await resolveTaskId(api, options.id);
+                targetId = { parent_id: parentId };
+                // Parent task's project is implied
+                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                if (parentTask) projectId = parentTask.projectId;
+            } catch (error) {
+                console.error(`Error: Parent task "${options.id}" not found`);
                 process.exit(1);
             }
-            targetId = { parent_id: parentTask.id };
-        }
-    } else if (options.section !== undefined) {
-        if (options.section === null) {
-            targetId = { project_id: projectId };
-        } else {
-            const section = sections.find(s => 
-                (!options.project || s.projectId === projectId) && (
-                    s.id === options.section ||
-                    s.name.toLowerCase().includes(options.section.toLowerCase())
-                )
-            );
+            break;
 
-            if (!section) {
-                console.error(`Error: Section "${options.section}" not found${options.project ? ' in target project' : ''}`);
+        case 'section':
+            try {
+                const sectionId = await resolveSectionId(api, options.id);
+                targetId = { section_id: sectionId };
+                // Section's project is implied
+                const section = (await api.getSections()).find(s => s.id === sectionId);
+                if (section) projectId = section.projectId;
+            } catch (error) {
+                console.error(`Error: Section "${options.id}" not found`);
                 process.exit(1);
             }
-            targetId = { section_id: section.id };
-        }
-    } else if (options.project) {
-        targetId = { project_id: projectId };
-    } else {
-        console.error("Error: Must specify either project, section, or parent task");
-        process.exit(1);
+            break;
+
+        case 'project':
+            try {
+                projectId = await resolveProjectId(api, options.id);
+                targetId = { project_id: projectId };
+            } catch (error) {
+                console.error(`Error: Project "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
     }
 
     const command = {
@@ -97,7 +78,8 @@ async function moveTask(api, task, options) {
             },
             to: {
                 project: await getProjectPath(api, projectId),
-                section: targetId.section_id
+                section: targetId.section_id,
+                parent: targetId.parent_id
             }
         }));
     } else {
@@ -106,11 +88,14 @@ async function moveTask(api, task, options) {
             console.log(`From project: ${await getProjectPath(api, task.projectId)}`);
             console.log(`To project: ${await getProjectPath(api, projectId)}`);
         }
-        if (targetId.section_id !== task.sectionId) {
-            const fromSection = sections.find(s => s.id === task.sectionId);
+        if (targetId.section_id) {
+            const sections = await api.getSections();
             const toSection = sections.find(s => s.id === targetId.section_id);
-            console.log(`From section: ${fromSection ? fromSection.name : 'none'}`);
-            console.log(`To section: ${toSection ? toSection.name : 'none'}`);
+            console.log(`To section: ${toSection ? toSection.name : 'unknown'}`);
+        }
+        if (targetId.parent_id) {
+            const parentTask = (await api.getTasks()).find(t => t.id === targetId.parent_id);
+            console.log(`To parent: ${parentTask ? parentTask.content : targetId.parent_id}`);
         }
     }
 }
@@ -184,32 +169,39 @@ async function updateTask(api, task, options) {
 
 function parseMoveOptions(args) {
     const options = {
-        project: null,
-        section: undefined,
-        parent: undefined
+        destination: null,
+        id: null
     };
 
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--project':
-                if (i + 1 < args.length) options.project = args[++i];
-                break;
-            case '--section':
-                if (i + 1 < args.length) options.section = args[++i];
-                break;
-            case '--no-section':
-                options.section = null;
-                break;
-            case '--parent':
-                if (i + 1 < args.length) options.parent = args[++i];
-                break;
-            case '--no-parent':
-                options.parent = null;
-                break;
-        }
-        i++;
+    // First collect all destination flags
+    const destinationFlags = args.filter(arg => 
+        arg === '--to-project' || 
+        arg === '--to-section' || 
+        arg === '--to-parent'
+    );
+
+    if (destinationFlags.length === 0) {
+        console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
+        process.exit(1);
     }
+
+    if (destinationFlags.length > 1) {
+        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
+        console.error("Use only one of: --to-project, --to-section, --to-parent");
+        process.exit(1);
+    }
+
+    // Now we know we have exactly one destination flag
+    const destinationFlag = destinationFlags[0];
+    const flagIndex = args.indexOf(destinationFlag);
+    
+    if (flagIndex === -1 || flagIndex === args.length - 1) {
+        console.error(`Error: ${destinationFlag} requires an ID`);
+        process.exit(1);
+    }
+
+    options.destination = destinationFlag.replace('--to-', '');
+    options.id = args[flagIndex + 1];
 
     return options;
 }
@@ -267,31 +259,73 @@ function parseUpdateOptions(args) {
     return options;
 }
 
-async function addTask(api, content, options = {}) {
-    // If project specified, resolve its ID
-    let projectId = null;
-    if (options.project) {
-        try {
-            projectId = await resolveProjectId(api, options.project);
-        } catch (error) {
-            console.error(`Error: Project "${options.project}" not found`);
-            process.exit(1);
+function parseAddOptions(args) {
+    const options = {
+        destination: null,
+        id: null,
+        priority: null,
+        dueString: null,
+        dueDate: null,
+        labels: null
+    };
+
+    let i = 0;
+    while (i < args.length) {
+        switch (args[i]) {
+            case '--to-project':
+            case '--to-parent':
+                if (options.destination) {
+                    console.error("Error: Cannot specify multiple destinations. Use only one of: --to-project, --to-parent");
+                    process.exit(1);
+                }
+                options.destination = args[i].replace('--to-', '');
+                if (i + 1 < args.length) options.id = args[++i];
+                break;
+            case '--priority':
+                if (i + 1 < args.length) options.priority = args[++i];
+                break;
+            case '--due':
+                if (i + 1 < args.length) options.dueString = args[++i];
+                break;
+            case '--date':
+                if (i + 1 < args.length) options.dueDate = args[++i];
+                break;
+            case '--labels':
+                if (i + 1 < args.length) options.labels = args[++i];
+                break;
         }
+        i++;
     }
 
-    // If parent task specified, resolve its ID
+    return options;
+}
+
+async function addTask(api, content, options = {}) {
+    let projectId = null;
     let parentId = null;
-    if (options.parent) {
-        try {
-            parentId = await resolveTaskId(api, options.parent);
-            // If no project specified, use parent's project
-            if (!projectId) {
-                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
-                if (parentTask) projectId = parentTask.projectId;
-            }
-        } catch (error) {
-            console.error(`Error: Parent task "${options.parent}" not found`);
-            process.exit(1);
+
+    if (options.destination) {
+        switch (options.destination) {
+            case 'parent':
+                try {
+                    parentId = await resolveTaskId(api, options.id);
+                    // Parent task's project is implied
+                    const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                    if (parentTask) projectId = parentTask.projectId;
+                } catch (error) {
+                    console.error(`Error: Parent task "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
+
+            case 'project':
+                try {
+                    projectId = await resolveProjectId(api, options.id);
+                } catch (error) {
+                    console.error(`Error: Project "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
         }
     }
 
@@ -332,42 +366,159 @@ async function addTask(api, content, options = {}) {
     }
 }
 
-function parseAddOptions(args) {
+function parseBatchMoveOptions(args) {
     const options = {
-        project: null,
-        parent: null,
-        priority: null,
-        dueString: null,
-        dueDate: null,
-        labels: null
+        destination: null,
+        id: null,
+        filter: null
     };
 
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--project':
-                if (i + 1 < args.length) options.project = args[++i];
-                break;
-            case '--parent':
-                if (i + 1 < args.length) options.parent = args[++i];
-                break;
-            case '--priority':
-                if (i + 1 < args.length) options.priority = args[++i];
-                break;
-            case '--due':
-                if (i + 1 < args.length) options.dueString = args[++i];
-                break;
-            case '--date':
-                if (i + 1 < args.length) options.dueDate = args[++i];
-                break;
-            case '--labels':
-                if (i + 1 < args.length) options.labels = args[++i];
-                break;
-        }
-        i++;
+    // First argument is the filter if it doesn't start with --
+    if (args.length > 0 && !args[0].startsWith('--')) {
+        options.filter = args[0];
+        args = args.slice(1); // Remove filter from args for destination parsing
     }
 
+    if (!options.filter) {
+        console.error("Error: Filter is required for batch operations");
+        process.exit(1);
+    }
+
+    // Collect all destination flags
+    const destinationFlags = args.filter(arg => 
+        arg === '--to-project' || 
+        arg === '--to-section' || 
+        arg === '--to-parent'
+    );
+
+    if (destinationFlags.length === 0) {
+        console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
+        process.exit(1);
+    }
+
+    if (destinationFlags.length > 1) {
+        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
+        console.error("Use only one of: --to-project, --to-section, --to-parent");
+        process.exit(1);
+    }
+
+    // Now we know we have exactly one destination flag
+    const destinationFlag = destinationFlags[0];
+    const flagIndex = args.indexOf(destinationFlag);
+    
+    if (flagIndex === -1 || flagIndex === args.length - 1) {
+        console.error(`Error: ${destinationFlag} requires an ID`);
+        process.exit(1);
+    }
+
+    options.destination = destinationFlag.replace('--to-', '');
+    options.id = args[flagIndex + 1];
+
     return options;
+}
+
+async function batchMoveTask(api, filter, options) {
+    // Get tasks matching the filter
+    const tasks = await api.getTasks({ filter });
+    if (tasks.length === 0) {
+        console.error(`No tasks found matching filter: ${filter}`);
+        process.exit(1);
+    }
+
+    let targetId;
+    let projectId;
+
+    switch (options.destination) {
+        case 'parent':
+            try {
+                const parentId = await resolveTaskId(api, options.id);
+                targetId = { parent_id: parentId };
+                // Parent task's project is implied
+                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                if (parentTask) projectId = parentTask.projectId;
+            } catch (error) {
+                console.error(`Error: Parent task "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
+
+        case 'section':
+            try {
+                const sectionId = await resolveSectionId(api, options.id);
+                targetId = { section_id: sectionId };
+                // Section's project is implied
+                const section = (await api.getSections()).find(s => s.id === sectionId);
+                if (section) projectId = section.projectId;
+            } catch (error) {
+                console.error(`Error: Section "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
+
+        case 'project':
+            try {
+                projectId = await resolveProjectId(api, options.id);
+                targetId = { project_id: projectId };
+            } catch (error) {
+                console.error(`Error: Project "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
+    }
+
+    // Build commands for each task
+    const commands = tasks.map(task => ({
+        type: 'item_move',
+        uuid: randomUUID(),
+        args: {
+            id: task.id,
+            ...targetId
+        }
+    }));
+
+    // Execute all commands in one request
+    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
+
+    if (options.json) {
+        console.log(JSON.stringify({
+            tasks: tasks.map(task => ({
+                id: task.id,
+                content: task.content,
+                from: {
+                    project: task.projectId,
+                    section: task.sectionId,
+                    parent: task.parentId
+                },
+                to: {
+                    project: projectId,
+                    section: targetId.section_id,
+                    parent: targetId.parent_id
+                }
+            })),
+            status: 'moved',
+            commandCount: commands.length
+        }, null, 2));
+    } else {
+        console.log(`Moved ${tasks.length} tasks:`);
+        for (const task of tasks) {
+            console.log(`- ${task.content} (${task.id})`);
+            if (projectId && projectId !== task.projectId) {
+                const fromPath = await getProjectPath(api, task.projectId);
+                const toPath = await getProjectPath(api, projectId);
+                console.log(`  From project: ${fromPath}`);
+                console.log(`  To project: ${toPath}`);
+            }
+            if (targetId.section_id) {
+                const sections = await api.getSections();
+                const section = sections.find(s => s.id === targetId.section_id);
+                console.log(`  To section: ${section ? section.name : 'unknown'}`);
+            }
+            if (targetId.parent_id) {
+                const parentTask = tasks.find(t => t.id === targetId.parent_id);
+                console.log(`  To parent: ${parentTask ? parentTask.content : targetId.parent_id}`);
+            }
+        }
+    }
 }
 
 async function main() {
@@ -412,6 +563,18 @@ async function main() {
                     updateOptions.complete = true;
                 }
                 await updateTask(api, updateTask, { ...updateBaseOptions, ...updateOptions });
+                break;
+            case 'batch-move':
+                const batchMoveOptions = parseBatchMoveOptions(subcommandArgs);
+                if (!batchMoveOptions.filter) {
+                    console.error("Error: Filter is required for batch operations");
+                    process.exit(1);
+                }
+                if (!batchMoveOptions.destination || !batchMoveOptions.id) {
+                    console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
+                    process.exit(1);
+                }
+                await batchMoveTask(api, batchMoveOptions.filter, { ...batchMoveOptions, json: args.includes('--json') });
                 break;
             default:
                 console.error(`Error: Unknown subcommand "${subcommand}"`);
