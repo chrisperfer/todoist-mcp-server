@@ -160,8 +160,11 @@ export async function resolveSectionId(api, idOrQuery, projectId = null) {
     // First try to parse as ID
     const numericId = parseInt(idOrQuery);
     if (!isNaN(numericId)) {
-        const section = (await api.getSections()).find(s => s.id === numericId);
-        if (section && (!projectId || section.projectId === projectId)) return section.id;
+        const sections = await api.getSections();
+        const section = sections.find(s => s.id === numericId.toString());  // Convert to string for comparison
+        if (section && (!projectId || section.projectId === projectId)) {
+            return section.id;  // Return the ID as it exists in the API
+        }
     }
 
     // If not found or not numeric, search by name

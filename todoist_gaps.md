@@ -149,4 +149,167 @@ Implementation Notes:
 - Need to maintain backward compatibility during migration
 - Should add proper error handling for sync-specific issues
 - Consider adding batch operation support where applicable
-- Update documentation to reflect Sync API usage 
+- Update documentation to reflect Sync API usage
+
+## Unused Sync API Features
+
+High-value features from the Sync API that we're not currently utilizing:
+
+1. Batching Commands
+   - Current Implementation: Making individual API calls for most operations
+   - API Capability: Up to 100 commands per request
+   - Potential Benefits:
+     - Significantly reduced API calls for bulk operations
+     - Better performance for mass updates
+     - Enable true bulk operations across projects
+   - Use Cases:
+     - Mass priority updates
+     - Bulk task moves
+     - Project structure cloning
+     - Section reorganization
+
+2. Templates API
+   - Current Implementation: No template support
+   - API Capability: Import/Export template files, shareable URLs
+   - Potential Benefits:
+     - Standardized project structures
+     - Easy sharing of successful layouts
+     - Quick project setup
+   - Use Cases:
+     - Health project sections
+     - Work project layouts
+     - Common project structures
+
+3. Activity Logs API
+   - Current Implementation: No activity tracking
+   - API Capability: Detailed activity logs with pagination
+   - Potential Benefits:
+     - Project health monitoring
+     - Usage pattern analysis
+     - Task distribution insights
+   - Use Cases:
+     - Project organization analysis
+     - Task distribution charts
+     - Workflow optimization
+
+Implementation Considerations:
+- Batching should be prioritized during Sync API migration
+- Templates could be implemented alongside project management improvements
+- Activity logs could enable many of our desired reporting features
+
+## API Inconsistencies
+
+Current inconsistencies across tools that need standardization:
+
+1. Parameter Naming
+   - Inconsistent case styles (camelCase vs snake_case)
+   - Examples:
+     - project_id vs projectId
+     - parent_id vs parentId
+     - section_id vs sectionId
+   - Need to standardize on one style across all tools
+
+2. Command Line Arguments
+   - Inconsistent parameter prefixes
+   - Examples:
+     - --projectId vs --project-id
+     - --parentId vs --parent
+     - --filter vs --query
+   - Need consistent parameter naming convention
+
+3. ID Resolution
+   - Mixed approaches to entity lookup:
+     - Some tools require exact IDs
+     - Others allow name matching
+     - Some support both with unclear precedence
+   - Need consistent approach to ID resolution
+
+4. Output Formatting
+   - Inconsistent output styles:
+     - Some tools default to JSON
+     - Others use formatted text
+     - Different error message formats
+   - Need standardized output format with consistent --json flag behavior
+
+5. Error Handling
+   - Various approaches to error reporting:
+     - Some tools exit immediately
+     - Others collect and report multiple errors
+     - Inconsistent error message formatting
+   - Need unified error handling strategy
+
+6. API Pattern Usage
+   - Mixed use of REST and Sync APIs
+   - Inconsistent validation approaches
+   - Different batching strategies
+   - Need consistent patterns across tools
+
+Standardization Priorities:
+1. Establish consistent parameter naming convention
+2. Standardize ID resolution approach
+3. Unify output and error handling
+4. Document and enforce API usage patterns
+
+Implementation Notes:
+- Create shared utility functions for common operations
+- Update all tools to follow consistent patterns
+- Add validation for standardized parameter names
+- Consider creating a tool template for future additions
+
+### CLI Argument Handling
+
+Current State:
+- Manual argument parsing in most tools
+- Inconsistent parameter validation
+- Varying help text formats
+- Different approaches to type coercion
+- No standardized way to handle common flags (e.g., --json)
+
+Recommended Solution - Yargs Integration:
+1. Benefits:
+   - Built-in parameter validation
+   - Consistent help text generation
+   - Type coercion for IDs
+   - Middleware support for common validations
+   - Shared option definitions
+
+2. Standard Options Pattern:
+```javascript
+const commonOptions = {
+  json: {
+    type: 'boolean',
+    description: 'Output as JSON',
+    default: false
+  },
+  projectId: {
+    type: 'string',
+    description: 'Project ID',
+    coerce: validateProjectId
+  }
+};
+```
+
+3. Common Validations:
+   - Token validation
+   - ID format checking
+   - Required parameter verification
+   - Type coercion
+   - Filter syntax validation
+
+4. Standardized Help Text:
+   - Consistent command description format
+   - Standard examples section
+   - Common parameter documentation
+   - Uniform error messages
+
+Implementation Priority:
+1. Create shared options and validation library
+2. Convert highest-use tools first (task.js, project tools)
+3. Standardize help text format
+4. Add common middleware for token/auth checks
+
+Migration Strategy:
+- Create template for new tool structure
+- Update tools one at a time
+- Add comprehensive tests for parameter handling
+- Document common patterns and options 

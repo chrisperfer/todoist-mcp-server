@@ -39,8 +39,12 @@ async function moveTask(api, task, options) {
             try {
                 targetId = { section_id: options.id };
                 // Section's project is implied - we'll get it from the task data
-                const task = await api.getTask(task.id);
-                if (task) projectId = task.projectId;
+                const sections = await api.getSections();
+                const section = sections.find(s => s.id === options.id.toString());  // Convert to string for comparison
+                if (!section) {
+                    throw new Error(`Section not found: ${options.id}`);
+                }
+                projectId = section.projectId;
             } catch (error) {
                 console.error(`Error moving task to section "${options.id}"`);
                 process.exit(1);
@@ -273,8 +277,9 @@ function parseAddOptions(args) {
         switch (args[i]) {
             case '--to-project':
             case '--to-parent':
+            case '--to-section':
                 if (options.destination) {
-                    console.error("Error: Cannot specify multiple destinations. Use only one of: --to-project, --to-parent");
+                    console.error("Error: Cannot specify multiple destinations. Use only one of: --to-project, --to-parent, --to-section");
                     process.exit(1);
                 }
                 options.destination = args[i].replace('--to-', '');
@@ -302,6 +307,7 @@ function parseAddOptions(args) {
 async function addTask(api, content, options = {}) {
     let projectId = null;
     let parentId = null;
+    let sectionId = null;
 
     if (options.destination) {
         switch (options.destination) {
@@ -325,14 +331,30 @@ async function addTask(api, content, options = {}) {
                     process.exit(1);
                 }
                 break;
+
+            case 'section':
+                try {
+                    sectionId = await resolveSectionId(api, options.id);
+                    const sections = await api.getSections();
+                    const section = sections.find(s => s.id === sectionId.toString());
+                    if (!section) {
+                        throw new Error(`Section not found: ${options.id}`);
+                    }
+                    projectId = section.projectId;
+                } catch (error) {
+                    console.error(`Error: Section "${options.id}" not found`);
+                    process.exit(1);
+                }
+                break;
         }
     }
 
     // Create task object
     const taskData = {
         content: content,
-        ...(projectId && { project_id: projectId }),
-        ...(parentId && { parent_id: parentId }),
+        ...(projectId && { project_id: projectId.toString() }),
+        ...(parentId && { parent_id: parentId.toString() }),
+        ...(sectionId && { section_id: sectionId.toString() }),
         ...(options.priority && { priority: parseInt(options.priority) }),
         ...(options.dueString && { date_string: options.dueString }),
         ...(options.dueDate && { date: options.dueDate }),
@@ -739,9 +761,9 @@ async function batchAddTask(api, options) {
     const commands = options.tasks.map(content => {
         const taskData = {
             content,
-            ...(projectId && { project_id: projectId }),
-            ...(parentId && { parent_id: parentId }),
-            ...(sectionId && { section_id: sectionId }),
+            ...(projectId && { project_id: projectId.toString() }),
+            ...(parentId && { parent_id: parentId.toString() }),
+            ...(sectionId && { section_id: sectionId.toString() }),
             ...(options.priority && { priority: parseInt(options.priority) }),
             ...(options.dueString && { date_string: options.dueString }),
             ...(options.dueDate && { date: options.dueDate }),
