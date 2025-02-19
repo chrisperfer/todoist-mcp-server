@@ -305,3 +305,33 @@ Migration Strategy:
 - Update tools one at a time
 - Add comprehensive tests for parameter handling
 - Document common patterns and options 
+
+## Documentation Organization Gaps
+
+1. Documentation Distribution:
+   - Documentation currently spread across multiple locations:
+     * README.md (project overview and examples)
+     * package.json toolDocs (detailed command reference)
+     * --help CLI output (immediate guidance)
+   - Challenges:
+     * Maintenance overhead
+     * Risk of inconsistency
+     * Potentially overwhelming --help output
+     * No clear hierarchy of documentation
+
+2. Proposed Improvements:
+   - Implement tiered documentation approach:
+     * Streamlined --help for common options
+     * New --help-all for comprehensive reference
+     * Generate both from toolDocs automatically
+   - Clarify documentation roles:
+     * README.md: Getting started only
+     * toolDocs: Single source of truth
+     * CLI help: Quick reference with pointers to full docs
+
+3. Implementation Needs:
+   - Documentation generation system
+   - Clear separation of concerns between doc types
+   - Automated consistency checking
+   - Better help output formatting
+   - Links between documentation levels 

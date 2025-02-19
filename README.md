@@ -5,9 +5,12 @@ An MCP (Model Context Protocol) server implementation that integrates Claude wit
 ## Features
 
 * **Natural Language Task Management**: Create, update, complete, and delete tasks using everyday language
-* **Smart Task Search**: Find tasks using partial name matches
-* **Flexible Filtering**: Filter tasks by due date, priority, and other attributes
-* **Rich Task Details**: Support for descriptions, due dates, and priority levels
+* **Enhanced List Commands**: Unified `list` command for tasks, projects, and sections with detailed views and JSON output
+* **Smart Task Search**: Find tasks using partial name matches and Todoist query syntax
+* **Flexible Filtering**: Filter tasks by due date, priority, project, and other attributes
+* **Rich Task Details**: Support for descriptions, due dates, priority levels, and notes
+* **Project Management**: View project hierarchies, sections, and associated tasks
+* **Sync API Integration**: Reliable data retrieval with support for batch operations
 * **Intuitive Error Handling**: Clear feedback for better user experience
 
 ## Installation
@@ -18,11 +21,66 @@ npm install -g @abhiz123/todoist-mcp-server
 
 ## Tools
 
-### todoist_create_task
+### todoist:list
+Unified command for listing tasks, projects, and sections:
+
+#### List Tasks
+```bash
+# Basic task listing with filters
+npm run todoist:list tasks
+npm run todoist:list tasks --filter "today"
+npm run todoist:list tasks --filter "p:Work & !p:Work/Archive"
+
+# Get detailed task information
+npm run todoist:list tasks --taskId 123456789
+
+# Common task filters
+npm run todoist:list tasks --filter "overdue"
+npm run todoist:list tasks --filter "priority 4"
+npm run todoist:list tasks --filter "@Goals: Growth & !@Next"
+```
+
+#### List Projects
+```bash
+# List all projects
+npm run todoist:list projects
+
+# Filter projects by name
+npm run todoist:list projects --filter "FLOOBY"
+
+# Get detailed project information
+npm run todoist:list projects --projectId 123456789 --data  # Include tasks, sections, notes
+npm run todoist:list projects --projectId 123456789 --info  # Include only project info and notes
+```
+
+#### List Sections
+```bash
+# List all sections
+npm run todoist:list sections
+
+# Filter sections by project
+npm run todoist:list sections --filter "p:FLOOBY"
+
+# Filter sections by name
+npm run todoist:list sections --filter "Meeting"
+```
+
+### todoist:add-task
 Create new tasks with various attributes:
 * Required: content (task title)
 * Optional: description, due date, priority level (1-4)
-* Example: "Create task 'Team Meeting' with description 'Weekly sync' due tomorrow"
+* Example: `npm run todoist:add-task -- --content "Team Meeting" --description "Weekly sync" --due tomorrow`
+
+### todoist:update-task
+Update existing tasks:
+* Find tasks by ID or content
+* Update any task attribute
+* Example: `npm run todoist:update-task -- --task 123456789 --due "next Monday"`
+
+### todoist:move-task
+Move tasks between projects and sections:
+* Use task ID for reliable targeting
+* Example: `npm run todoist:move-task -- --task 123456789 --project "Work" --section "Planning"`
 
 ### todoist_get_tasks
 Retrieve and filter tasks:
@@ -76,62 +134,31 @@ Add to your `claude_desktop_config.json`:
 
 ## Example Usage
 
-### Creating Tasks
-```
-"Create task 'Team Meeting'"
-"Add task 'Review PR' due tomorrow at 2pm"
-"Create high priority task 'Fix bug' with description 'Critical performance issue'"
+### Listing and Filtering
+```bash
+# List tasks due today
+npm run todoist:list tasks --filter "today"
+
+# Get detailed project information
+npm run todoist:list projects --projectId 123456789 --data
+
+# List sections in a project
+npm run todoist:list sections --filter "p:Work"
 ```
 
-### Getting Tasks
-```
-"Show all my tasks"
-"List tasks due today"
-"Get high priority tasks"
-"Show tasks due this week"
-```
+### Task Management
+```bash
+# Create a new task
+npm run todoist:add-task -- --content "Review PR" --due "tomorrow at 2pm"
 
-### Updating Tasks
-```
-"Update documentation task to be due next week"
-"Change priority of bug fix task to urgent"
-"Add description to team meeting task"
-```
+# Update a task
+npm run todoist:update-task -- --task 123456789 --priority 4
 
-### Completing Tasks
-```
-"Mark the PR review task as complete"
-"Complete the documentation task"
-```
-
-### Deleting Tasks
-```
-"Delete the PR review task"
-"Remove meeting prep task"
+# Move a task
+npm run todoist:move-task -- --task 123456789 --project "Work" --section "In Progress"
 ```
 
 ## Development
 
 ### Building from source
-```bash
-# Clone the repository
-git clone https://github.com/abhiz123/todoist-mcp-server.git
-
-# Navigate to directory
-cd todoist-mcp-server
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
 ```
-
-## Contributing
-Contributions are welcome! Feel free to submit a Pull Request.
-
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Issues and Support
-If you encounter any issues or need support, please file an issue on the [GitHub repository](https://github.com/abhiz123/todoist-mcp-server/issues).
