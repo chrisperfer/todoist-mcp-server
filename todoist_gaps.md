@@ -29,10 +29,6 @@
   - Missing tools for reorganizing multiple projects simultaneously
   - No way to apply consistent structure across multiple projects
   - No tools for merging or splitting sections 
-  - Section creation tool (add-section.js) needs improvement:
-    - Better error handling
-    - Clearer parameter documentation
-    - Support for creating multiple sections at once 
 - **API Inconsistencies**:
   - Section handling differs between REST API and Sync API:
     - REST API's `getSections()` sometimes fails to return sections that exist
@@ -71,10 +67,6 @@
    - Need to add functionality to remove labels from individual tasks
    - Consider adding a `--clear-labels` option to the task update command
 
-2. Batch Add Improvements Needed
-   - Some tasks are duplicated when adding multiple tasks with URLs
-   - Need to improve handling of special characters and URLs in batch-add
-   - Consider adding validation to prevent duplicate task creation
 
 3. Task Cleanup
    - No easy way to delete duplicate tasks
