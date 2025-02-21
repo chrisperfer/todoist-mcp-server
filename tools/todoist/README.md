@@ -14,288 +14,254 @@ export TODOIST_API_TOKEN=your_api_token_here
 npm install
 ```
 
-## Finding Tasks, Projects, and Sections
+## Core Commands
 
-The list commands are your primary tools for discovering IDs:
+The tools have been consolidated into three main commands plus utilities:
 
-### List Tasks
+- `list` - List and filter tasks, projects, and sections
+- `task` - Manage tasks (add, update, move, batch operations)
+- `project` - Manage projects (add, update, bulk operations)
+- `workflow` - Process sequential thoughts
+
+### List Command
+
+The unified command for viewing tasks, projects, and sections:
+
 ```bash
-list-tasks [options]
+node tools/todoist/list.js <subcommand> [options]
+```
+
+#### List Tasks
+```bash
+node tools/todoist/list.js tasks [options]
 
 Options:
-  --filter <query>     Use Todoist filter syntax (recommended, see examples below)
-  --projectId <id>     Filter tasks by project ID (numeric only)
-  --label <label>     Filter by label (can be used multiple times)
-  --json              Output in JSON format
-  --detailed          Show detailed task information
+  --filter "<query>"   Filter tasks using Todoist query syntax
+  --taskId "<id>"     Get detailed information for a specific task
+  --json             Output in JSON format
+
+Examples:
+# Basic task listing with filters
+node tools/todoist/list.js tasks --filter "today"
+node tools/todoist/list.js tasks --filter "#FLOOBY 🐒"
+node tools/todoist/list.js tasks --filter "overdue"
+node tools/todoist/list.js tasks --filter "priority 4"
+node tools/todoist/list.js tasks --filter "no date & !@waiting"
+node tools/todoist/list.js tasks --filter "due before: +7 days"
+node tools/todoist/list.js tasks --filter "@Goals: Growth & !@Next"
+
+# Get detailed task information
+node tools/todoist/list.js tasks --taskId 123456789 --json
 ```
 
-### List Projects
+#### List Projects
 ```bash
-list-projects [options]
+node tools/todoist/list.js projects [options]
 
 Options:
-  --json              Output in JSON format
+  --filter "<text>"    Filter projects by name
+  --projectId "<id>"   Get detailed information for a specific project
+  --data              Include tasks, sections, and notes with --projectId
+  --info              Include only project info and notes with --projectId
+  --json             Output in JSON format
+
+Examples:
+# List all projects
+node tools/todoist/list.js projects
+
+# Filter projects by name (include emojis if present)
+node tools/todoist/list.js projects --filter "FLOOBY 🐒"
+
+# Get detailed project information
+node tools/todoist/list.js projects --projectId 123456789 --data
 ```
 
-### List Sections
+#### List Sections
 ```bash
-list-sections [options]
+node tools/todoist/list.js sections [options]
 
 Options:
-  --project <name|id>  Show sections in specific project
-  --json              Output in JSON format
-```
-
-### Using Todoist Filters
-
-Filters are powerful queries to find exactly what you need. Some examples:
-
-```bash
-# Tasks due today in the Work project
-list-tasks --filter "today & ##Work"
-
-# High priority tasks with specific label
-list-tasks --filter "p1 & @important"
-
-# Overdue tasks in any project
-list-tasks --filter "overdue"
-
-# Tasks in a specific section
-list-tasks --filter "##Project/Section"
-
-# Complex combinations
-list-tasks --filter "(today | overdue) & @important & ##Work"
-```
-
-For more filter syntax, see [Todoist's filter documentation](https://todoist.com/help/articles/205280588-search-and-filter).
-
-### Project Filtering Best Practices
-
-When filtering tasks by project, you have two options:
-
-1. Using Todoist filter syntax (Recommended):
-```bash
-# Filter by project name (flexible, preferred method)
-list-tasks --filter "p:Project Name"
-list-tasks --filter "(p:Project1 | p:Project2) & @important"
-
-# Complex project filters
-list-tasks --filter "p:Work & !p:Work/Archive"
-```
-
-2. Using project ID:
-```bash
-# First find the project ID
-list-projects
-# Then filter by ID
-list-tasks --projectId 123456789
-```
-
-The filter syntax is more powerful and flexible, supporting:
-- Partial name matching
-- Multiple projects
-- Complex conditions
-- Case-insensitive matching
-
-## Task Command
-
-The main command for managing tasks is `task`. It accepts both IDs and names, but using IDs is recommended for reliability.
-
-### Basic Usage
-
-```bash
-task <subcommand> [options]
-```
-
-Where:
-- `<subcommand>` is one of: `add`, `update`, `move`, or `complete`
-- `[options]` are specific to each subcommand
-
-### Subcommands
-
-#### Add Task
-```bash
-task add <content> [options]
-
-Where:
-- <content> is the task content/description
-- [options] can include:
-  --to-project <id>    Add to project (root level)
-  --to-parent <id>     Add under parent task (project implied)
-  --priority <1-4>     Set task priority
-  --due <string>       Set due date using natural language
-  --date <YYYY-MM-DD>  Set specific due date
-  --labels <labels>    Set comma-separated labels
+  --filter "<filter>"   Filter sections by name or project
+  --projectId "<id>"    Filter sections by project ID
   --json              Output in JSON format
 
 Examples:
-# Add task to project root
-task add "New task" --to-project 987654321
+# List all sections
+node tools/todoist/list.js sections
 
-# Add subtask (project inherited from parent)
-task add "Subtask" --to-parent 123456789
+# Filter sections by project (include emojis if present)
+node tools/todoist/list.js sections --filter "p:FLOOBY 🐒"
 
-# Add task with additional details
-task add "Important task" --to-project 987654321 --priority 1 --due "tomorrow" --labels "important,work"
+# Filter sections by name
+node tools/todoist/list.js sections --filter "Meeting"
 ```
 
-Note: The destination hierarchy is enforced:
-- When adding under a parent task, the project is implied by the parent
-- Only one destination can be specified (--to-project or --to-parent)
-- Tasks cannot be directly added to sections (create in project then move)
+### Task Command
 
-#### Update Task
+The unified command for all task operations:
+
 ```bash
-# Using ID (recommended)
-task update 123456789 --content "New content"
+node tools/todoist/task.js <subcommand> [options]
+```
 
-# Using content (falls back to exact match)
-task update "Task name" --content "New content"
+#### Add Task
+```bash
+node tools/todoist/task.js add [options]
 
 Options:
-  --content <text>          Update task content
-  --description <text>      Update task description
-  --priority <1-4>         Set task priority
-  --labels <label1,label2>  Set task labels
-  --add-labels <labels>     Add labels to existing ones
-  --remove-labels <labels>  Remove specific labels
-  --due-string <string>     Set due date using natural language
-  --due-date <YYYY-MM-DD>   Set specific due date
-  --json                    Output in JSON format
+  --content "<text>"      Task content (required)
+  --project "<id/name>"   Project to add task to
+  --section "<id/name>"   Section to add task to
+  --parent "<id>"         Parent task ID for subtask
+  --priority "<1-4>"      Task priority
+  --due-string "<text>"   Due date as text (e.g., "tomorrow")
+  --due-date "<date>"     Due date (YYYY-MM-DD)
+  --labels "<labels>"     Comma-separated list of labels
+  --json                 Output in JSON format
+
+Examples:
+# Add task to project
+node tools/todoist/task.js add --content "New task" --project "FLOOBY 🐒"
+
+# Add task with details
+node tools/todoist/task.js add --content "Important task" --priority 1 --due-string "tomorrow" --labels "urgent,work"
+```
+
+#### Batch Add Tasks
+```bash
+node tools/todoist/task.js batch-add [options]
+
+Options:
+  --tasks "<tasks>"       Task contents (space-separated, use quotes)
+  --project "<id/name>"   Project to add tasks to
+  --section "<id/name>"   Section to add tasks to
+  [Same options as single add]
+
+Example:
+node tools/todoist/task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --project "FLOOBY 🐒"
 ```
 
 #### Move Task
 ```bash
-task move <task> --to-[destination-type] <id>
-
-Where:
-- <task> is the task ID or content to move
-- destination-type is one of: project, section, or parent
-- <id> is the ID of the destination
-
-Examples:
-# Move task to root of a project
-task move 123456789 --to-project 987654321
-
-# Move task to a section (project is implied)
-task move 123456789 --to-section 456789123
-
-# Move task under another task (project and section are implied)
-task move 123456789 --to-parent 789123456
-```
-
-Note: The destination hierarchy is strictly enforced:
-- When moving to a parent task, both project and section are implied by the parent
-- When moving to a section, the project is implied by the section
-- When moving to a project, the task is placed at the root level
-- Only one destination can be specified (--to-project, --to-section, or --to-parent)
-
-### Batch Move Tasks
-```bash
-task batch-move <filter> --to-[destination-type] <id>
-
-Where:
-- <filter> is a Todoist filter query (e.g. "##Project" or "@label")
-- destination-type is one of: project, section, or parent
-- <id> is the ID of the destination
-
-Examples:
-# Move all tasks from FLOOBY project to Technical Debt section
-task batch-move "##FLOOBY" --to-section 172860480
-
-# Move all high priority tasks to a project
-task batch-move "p1" --to-project 987654321
-
-# Move all tasks with a label under a parent task
-task batch-move "@waiting" --to-parent 123456789
-```
-
-The same destination hierarchy rules apply to batch moves as to single task moves.
-
-### Finding IDs
-
-To find the IDs needed for move operations:
-
-```bash
-# Find task IDs
-list-tasks --filter "your search"
-
-# Find project IDs
-list-projects
-
-# Find section IDs
-list-sections --project <project-id>
-
-# Search for any type
-search task "search term"
-search project "search term"
-search section "search term"
-```
-
-#### Complete Task
-```bash
-# Using ID (recommended)
-task complete 123456789
-
-# Using content (falls back to exact match)
-task complete "Task name"
+node tools/todoist/task.js move [options]
 
 Options:
-  --json            Output in JSON format
+  --task "<id/content>"   Task to move (required)
+  --to-project "<id>"     Move to project
+  --to-section "<id>"     Move to section
+  --to-parent "<id>"      Move as subtask of parent
+  --json                 Output in JSON format
+
+Example:
+node tools/todoist/task.js move --task 123456789 --to-project 987654321
 ```
 
-#### Batch Label Tasks
+#### Batch Move Tasks
 ```bash
-task batch-label <filter> [options]
+node tools/todoist/task.js batch-move [options]
 
 Options:
-  --labels <labels>        Set labels for all matching tasks
-  --add-labels <labels>    Add labels to existing ones
-  --remove-labels <labels> Remove specific labels
-  --json                   Output in JSON format
+  --filter "<query>"      Tasks to move (required)
+  --to-project "<id>"     Move to project
+  --to-section "<id>"     Move to section
+  --to-parent "<id>"      Move as subtask of parent
+  --json                 Output in JSON format
 
-Examples:
-# Set labels for all tasks in FLOOBY project
-task batch-label "##FLOOBY" --labels "flooby,important"
-
-# Add labels to all tasks in a section
-task batch-label "##FLOOBY/Section" --add-labels "urgent,high-priority"
-
-# Remove labels from all tasks with a specific label
-task batch-label "@old-label" --remove-labels "old-label"
+Example:
+node tools/todoist/task.js batch-move --filter "#FLOOBY 🐒" --to-section 172860480
 ```
 
-### Examples
-
-First, find the relevant IDs:
+#### Update Task
 ```bash
-# Find task ID
-list-tasks --filter "##Work & @important"
-# Output: 123456789    Important task (p1, [Work], @important)
+node tools/todoist/task.js update [options]
 
-# Find project ID
-list-projects
-# Output: 987654321    Work
+Options:
+  --task "<id/content>"   Task to update (required)
+  --content "<text>"      New content
+  --description "<text>"  New description
+  --priority "<1-4>"      New priority
+  --due-string "<text>"   New due date as text
+  --due-date "<date>"     New due date (YYYY-MM-DD)
+  --labels "<labels>"     Set labels (comma-separated)
+  --add-labels "<labels>" Add to existing labels
+  --remove-labels "<l>"   Remove from existing labels
+  --complete             Mark as complete
+  --json                Output in JSON format
 
-# Then use IDs for operations
-task move 123456789 --project 987654321
-task update 123456789 --priority 1
-task complete 123456789
+Example:
+node tools/todoist/task.js update --task 123456789 --priority 1 --due-string "tomorrow"
 ```
 
-Using filters to find related items:
+### Project Command
+
+The unified command for all project operations:
+
 ```bash
-# Find all tasks in a project to get its ID
-list-tasks --filter "##SomeProject"
-
-# Find all subtasks of a parent
-list-tasks --filter "parent: 123456789"
-
-# Find tasks in a section
-list-tasks --filter "##Project/Section"
+node tools/todoist/project.js <subcommand> [options]
 ```
 
-## Legacy Commands
+#### Add Project
+```bash
+node tools/todoist/project.js add [options]
 
-The individual `update-task.js` and `move-task.js` scripts are maintained for backward compatibility but will be deprecated in future versions. Please migrate to the unified `task` command. 
+Options:
+  --name "<text>"        Project name (required)
+  --parentId "<id>"      Parent project ID
+  --color "<color>"      Project color
+  --view "<style>"       View style (list/board)
+  --favorite            Set as favorite
+  --json               Output in JSON format
+
+Example:
+node tools/todoist/project.js add --name "New Project 📁" --color "blue" --favorite
+```
+
+#### Bulk Add Projects
+```bash
+node tools/todoist/project.js bulk-add [options]
+
+Options:
+  --names "<names>"      Project names (use quotes for multi-word names)
+  [Same options as single add]
+
+Example:
+node tools/todoist/project.js bulk-add --names "Project 1 📁" "Project 2 📁" --color "blue"
+```
+
+#### Update Project
+```bash
+node tools/todoist/project.js update [options]
+
+Options:
+  --project "<id/name>"  Project to update (required)
+  --name "<text>"       New name
+  --parentId "<id>"     New parent project ID
+  --color "<color>"     New color
+  --view "<style>"      New view style
+  --favorite           Toggle favorite status
+  --json              Output in JSON format
+
+Example:
+node tools/todoist/project.js update --project "Old Name" --name "New Name 📁" --color "red"
+```
+
+### Utility Commands
+
+#### Workflow Tool
+```bash
+node tools/todoist/workflow-tool.js [options]
+
+Options:
+  JSON input with thought structure
+  --waitSeconds <n>      Pause duration between thoughts
+  --branchId "<id>"      Branch identifier for parallel paths
+```
+
+## Best Practices
+
+1. Always use IDs instead of content/names when possible for more reliable targeting
+2. Use 'list projects' to verify project IDs and structure before creating new projects
+3. Use 'list sections' to verify section existence before creating or moving tasks
+4. Project names are case-sensitive and must match exactly (including emojis)
+5. When creating sections, verify the project exists first to avoid duplicate projects
+6. When filtering by project name, include any emojis that are part of the project name 

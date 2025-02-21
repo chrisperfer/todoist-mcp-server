@@ -2,8 +2,6 @@
 
 import { randomUUID } from 'crypto';
 import url from 'url';
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
 import {
     initializeApi,
     getProjectPath,
@@ -217,130 +215,184 @@ async function updateProject(api, projectQuery, options) {
     }
 }
 
+function parseAddOptions(args) {
+    const options = {
+        json: args.includes('--json'),
+        parentId: null,
+        color: null,
+        view: null,
+        favorite: args.includes('--favorite')
+    };
+
+    // Get project name (everything before the first -- flag or all args if no flags)
+    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
+    const name = firstFlagIndex === -1 
+        ? args.join(' ')
+        : args.slice(0, firstFlagIndex).join(' ');
+
+    if (!name) {
+        console.error("Error: Project name is required");
+        process.exit(1);
+    }
+
+    // Parse other options
+    let i = firstFlagIndex;
+    while (i !== -1 && i < args.length) {
+        switch (args[i]) {
+            case '--parentId':
+                if (i + 1 < args.length) options.parentId = args[++i];
+                break;
+            case '--color':
+                if (i + 1 < args.length) options.color = args[++i];
+                break;
+            case '--view':
+                if (i + 1 < args.length) options.view = args[++i];
+                break;
+        }
+        i++;
+    }
+
+    return { name, options };
+}
+
+function parseBulkAddOptions(args) {
+    const options = {
+        json: args.includes('--json'),
+        parentId: null,
+        color: null,
+        view: null,
+        favorite: args.includes('--favorite')
+    };
+
+    // First argument should be a newline-separated list of projects
+    if (args.length === 0) {
+        console.error("Error: Project list is required for bulk-add");
+        process.exit(1);
+    }
+
+    // Split by literal \n or actual newlines and clean up
+    const projects = args[0]
+        .split(/\\n|\n/)
+        .map(t => t.trim())
+        .filter(t => t);
+    args = args.slice(1);
+
+    let i = 0;
+    while (i < args.length) {
+        switch (args[i]) {
+            case '--parentId':
+                if (i + 1 < args.length) options.parentId = args[++i];
+                break;
+            case '--color':
+                if (i + 1 < args.length) options.color = args[++i];
+                break;
+            case '--view':
+                if (i + 1 < args.length) options.view = args[++i];
+                break;
+        }
+        i++;
+    }
+
+    return { projects, options };
+}
+
+function parseUpdateOptions(args) {
+    const options = {
+        json: args.includes('--json'),
+        name: null,
+        parentId: null,
+        color: null,
+        view: null,
+        favorite: undefined
+    };
+
+    // Get project query (everything before the first -- flag or all args if no flags)
+    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
+    const projectQuery = firstFlagIndex === -1 
+        ? args.join(' ')
+        : args.slice(0, firstFlagIndex).join(' ');
+
+    if (!projectQuery) {
+        console.error("Error: Project ID or name is required");
+        process.exit(1);
+    }
+
+    // Parse other options
+    let i = firstFlagIndex;
+    while (i !== -1 && i < args.length) {
+        switch (args[i]) {
+            case '--name':
+                if (i + 1 < args.length) options.name = args[++i];
+                break;
+            case '--parentId':
+                if (i + 1 < args.length) options.parentId = args[++i];
+                break;
+            case '--color':
+                if (i + 1 < args.length) options.color = args[++i];
+                break;
+            case '--view':
+                if (i + 1 < args.length) options.view = args[++i];
+                break;
+            case '--favorite':
+                options.favorite = true;
+                break;
+            case '--no-favorite':
+                options.favorite = false;
+                break;
+        }
+        i++;
+    }
+
+    if (!options.name && !options.parentId && !options.color && !options.view && options.favorite === undefined) {
+        console.error("Error: At least one update option is required (--name, --parentId, --color, --view, --favorite, or --no-favorite)");
+        process.exit(1);
+    }
+
+    return { projectQuery, options };
+}
+
 async function main() {
-    const argv = yargs(hideBin(process.argv))
-        .command('add', 'Add a new project', {
-            name: {
-                description: 'Project name',
-                type: 'string',
-                demandOption: true
-            },
-            parentId: {
-                description: 'Parent project ID',
-                type: 'string'
-            },
-            color: {
-                description: 'Project color',
-                type: 'string',
-                choices: VALID_COLORS
-            },
-            view: {
-                description: 'View style',
-                type: 'string',
-                choices: VALID_VIEWS
-            },
-            favorite: {
-                description: 'Set as favorite',
-                type: 'boolean',
-                default: false
-            },
-            json: {
-                description: 'Output in JSON format',
-                type: 'boolean',
-                default: false
+    try {
+        const args = process.argv.slice(2);
+        
+        if (args.length === 0) {
+            console.error("Error: Subcommand required (add, bulk-add, or update)");
+            process.exit(1);
+        }
+        
+        const subcommand = args[0];
+        const subcommandArgs = args.slice(1);
+        
+        const api = await initializeApi();
+        
+        switch (subcommand) {
+            case 'add': {
+                const { name, options } = parseAddOptions(subcommandArgs);
+                await addProject(api, name, options);
+                break;
             }
-        })
-        .command('bulk-add', 'Add multiple projects', {
-            names: {
-                description: 'Project names (use quotes for multi-word names, e.g., --names "First Project" "Second Project")',
-                type: 'array',
-                demandOption: true,
-                string: true,
-                coerce: args => args.map(arg => arg.trim())
-            },
-            parentId: {
-                description: 'Parent project ID',
-                type: 'string'
-            },
-            color: {
-                description: 'Project color',
-                type: 'string',
-                choices: VALID_COLORS
-            },
-            view: {
-                description: 'View style',
-                type: 'string',
-                choices: VALID_VIEWS
-            },
-            favorite: {
-                description: 'Set as favorite',
-                type: 'boolean',
-                default: false
-            },
-            json: {
-                description: 'Output in JSON format',
-                type: 'boolean',
-                default: false
+            case 'bulk-add': {
+                const { projects, options } = parseBulkAddOptions(subcommandArgs);
+                await bulkAddProjects(api, projects, options);
+                break;
             }
-        })
-        .command('update', 'Update a project', {
-            project: {
-                description: 'Project ID or name to update',
-                type: 'string',
-                demandOption: true
-            },
-            name: {
-                description: 'New project name',
-                type: 'string'
-            },
-            parentId: {
-                description: 'New parent project ID',
-                type: 'string'
-            },
-            color: {
-                description: 'New project color',
-                type: 'string',
-                choices: VALID_COLORS
-            },
-            view: {
-                description: 'New view style',
-                type: 'string',
-                choices: VALID_VIEWS
-            },
-            favorite: {
-                description: 'Set as favorite',
-                type: 'boolean'
-            },
-            json: {
-                description: 'Output in JSON format',
-                type: 'boolean',
-                default: false
+            case 'update': {
+                const { projectQuery, options } = parseUpdateOptions(subcommandArgs);
+                await updateProject(api, projectQuery, options);
+                break;
             }
-        })
-        .demandCommand(1, 'You must provide a valid command')
-        .help()
-        .argv;
-
-    const api = await initializeApi();
-
-    switch (argv._[0]) {
-        case 'add':
-            await addProject(api, argv.name, argv);
-            break;
-        case 'bulk-add':
-            await bulkAddProjects(api, argv.names, argv);
-            break;
-        case 'update':
-            await updateProject(api, argv.project, argv);
-            break;
+            default:
+                console.error(`Error: Unknown subcommand "${subcommand}"`);
+                process.exit(1);
+        }
+    } catch (error) {
+        console.error("Error:", error.message);
+        process.exit(1);
     }
 }
 
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-    main().catch(error => {
-        console.error('Error:', error.message);
-        process.exit(1);
-    });
+    main();
 }
 
 export { addProject, bulkAddProjects, updateProject }; 

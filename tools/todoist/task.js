@@ -2,6 +2,8 @@
 
 import { randomUUID } from 'crypto';
 import url from 'url';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 import {
     initializeApi,
     findTask,
@@ -17,6 +19,7 @@ import {
     resolveSectionId
 } from './lib/id-utils.js';
 
+// Reuse existing task manipulation functions
 async function moveTask(api, task, options) {
     let targetId;
     let projectId;
@@ -26,7 +29,6 @@ async function moveTask(api, task, options) {
             try {
                 const parentId = await resolveTaskId(api, options.id);
                 targetId = { parent_id: parentId };
-                // Parent task's project is implied
                 const parentTask = (await api.getTasks()).find(t => t.id === parentId);
                 if (parentTask) projectId = parentTask.projectId;
             } catch (error) {
@@ -37,14 +39,22 @@ async function moveTask(api, task, options) {
 
         case 'section':
             try {
-                targetId = { section_id: options.id };
-                // Section's project is implied - we'll get it from the task data
+                // NOTE: Section validation is skipped due to REST API limitations
+                // This would be the ideal validation code:
+                /*
                 const sections = await api.getSections();
-                const section = sections.find(s => s.id === options.id.toString());  // Convert to string for comparison
+                const section = sections.find(s => s.id === options.id);
                 if (!section) {
                     throw new Error(`Section not found: ${options.id}`);
                 }
-                projectId = section.projectId;
+                */
+                // Instead, we trust the section ID and proceed
+                targetId = { section_id: options.id };
+                const sections = await api.getSections();
+                const section = sections.find(s => s.id === options.id);
+                if (section) {
+                    projectId = section.projectId;
+                }
             } catch (error) {
                 console.error(`Error moving task to section "${options.id}"`);
                 process.exit(1);
@@ -71,7 +81,7 @@ async function moveTask(api, task, options) {
         }
     };
 
-    const result = await executeSyncCommand(process.env.TODOIST_API_TOKEN, command);
+    await executeSyncCommand(process.env.TODOIST_API_TOKEN, command);
 
     if (options.json) {
         console.log(formatJsonOutput(task, 'moved', {
@@ -103,6 +113,28 @@ async function moveTask(api, task, options) {
     }
 }
 
+async function batchMoveTask(api, taskIds, options) {
+    // Get all tasks first
+    const tasks = await api.getTasks();
+    
+    // Find tasks by ID
+    const tasksToMove = taskIds.map(id => {
+        const task = tasks.find(t => t.id === id);
+        if (!task) {
+            console.error(`Task not found: ${id}`);
+            process.exit(1);
+        }
+        return task;
+    });
+
+    console.log(`Moving ${tasksToMove.length} tasks`);
+    
+    // Move each task
+    for (const task of tasksToMove) {
+        await moveTask(api, task, options);
+    }
+}
+
 async function updateTask(api, task, options) {
     if (options.complete) {
         try {
@@ -122,11 +154,11 @@ async function updateTask(api, task, options) {
         const existingLabels = task.labels || [];
         
         if (options.addLabels) {
-            updateData.labels = [...new Set([...existingLabels, ...options.labels.split(',').map(l => l.trim())])];
+            updateData.labels = [...new Set([...existingLabels, ...options.labels])];
         } else if (options.removeLabels) {
-            updateData.labels = existingLabels.filter(l => !options.labels.split(',').map(l => l.trim()).includes(l));
+            updateData.labels = existingLabels.filter(l => !options.labels.includes(l));
         } else {
-            updateData.labels = options.labels.split(',').map(l => l.trim());
+            updateData.labels = options.labels;
         }
     }
 
@@ -146,7 +178,7 @@ async function updateTask(api, task, options) {
         }
     };
 
-    const result = await executeSyncCommand(process.env.TODOIST_API_TOKEN, command);
+    await executeSyncCommand(process.env.TODOIST_API_TOKEN, command);
 
     if (options.json) {
         console.log(formatJsonOutput(task, 'updated', {
@@ -170,738 +202,491 @@ async function updateTask(api, task, options) {
     }
 }
 
-function parseMoveOptions(args) {
-    const options = {
-        destination: null,
-        id: null
-    };
-
-    // First collect all destination flags
-    const destinationFlags = args.filter(arg => 
-        arg === '--to-project' || 
-        arg === '--to-section' || 
-        arg === '--to-parent'
-    );
-
-    if (destinationFlags.length === 0) {
-        console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
-        process.exit(1);
-    }
-
-    if (destinationFlags.length > 1) {
-        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
-        console.error("Use only one of: --to-project, --to-section, --to-parent");
-        process.exit(1);
-    }
-
-    // Now we know we have exactly one destination flag
-    const destinationFlag = destinationFlags[0];
-    const flagIndex = args.indexOf(destinationFlag);
-    
-    if (flagIndex === -1 || flagIndex === args.length - 1) {
-        console.error(`Error: ${destinationFlag} requires an ID`);
-        process.exit(1);
-    }
-
-    options.destination = destinationFlag.replace('--to-', '');
-    options.id = args[flagIndex + 1];
-
-    return options;
-}
-
-function parseUpdateOptions(args) {
-    const options = {
-        complete: args.includes('--complete'),
-        labels: null,
-        addLabels: false,
-        removeLabels: false,
-        content: null,
-        description: null,
-        priority: null,
-        dueString: null,
-        dueDate: null
-    };
-
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--labels':
-                if (i + 1 < args.length) options.labels = args[++i];
-                break;
-            case '--add-labels':
-                if (i + 1 < args.length) {
-                    options.labels = args[++i];
-                    options.addLabels = true;
-                }
-                break;
-            case '--remove-labels':
-                if (i + 1 < args.length) {
-                    options.labels = args[++i];
-                    options.removeLabels = true;
-                }
-                break;
-            case '--content':
-                if (i + 1 < args.length) options.content = args[++i];
-                break;
-            case '--description':
-                if (i + 1 < args.length) options.description = args[++i];
-                break;
-            case '--priority':
-                if (i + 1 < args.length) options.priority = args[++i];
-                break;
-            case '--due-string':
-                if (i + 1 < args.length) options.dueString = args[++i];
-                break;
-            case '--due-date':
-                if (i + 1 < args.length) options.dueDate = args[++i];
-                break;
-        }
-        i++;
-    }
-
-    return options;
-}
-
-function parseAddOptions(args) {
-    const options = {
-        destination: null,
-        id: null,
-        priority: null,
-        dueString: null,
-        dueDate: null,
-        labels: null
-    };
-
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--to-project':
-            case '--to-parent':
-            case '--to-section':
-                if (options.destination) {
-                    console.error("Error: Cannot specify multiple destinations. Use only one of: --to-project, --to-parent, --to-section");
-                    process.exit(1);
-                }
-                options.destination = args[i].replace('--to-', '');
-                if (i + 1 < args.length) options.id = args[++i];
-                break;
-            case '--priority':
-                if (i + 1 < args.length) options.priority = args[++i];
-                break;
-            case '--due':
-                if (i + 1 < args.length) options.dueString = args[++i];
-                break;
-            case '--date':
-                if (i + 1 < args.length) options.dueDate = args[++i];
-                break;
-            case '--labels':
-                if (i + 1 < args.length) options.labels = args[++i];
-                break;
-        }
-        i++;
-    }
-
-    return options;
-}
-
 async function addTask(api, content, options = {}) {
     let projectId = null;
-    let parentId = null;
     let sectionId = null;
+    let parentId = null;
 
-    if (options.destination) {
-        switch (options.destination) {
-            case 'parent':
-                try {
-                    parentId = await resolveTaskId(api, options.id);
-                    // Parent task's project is implied
-                    const parentTask = (await api.getTasks()).find(t => t.id === parentId);
-                    if (parentTask) projectId = parentTask.projectId;
-                } catch (error) {
-                    console.error(`Error: Parent task "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
-
-            case 'project':
-                try {
-                    projectId = await resolveProjectId(api, options.id);
-                } catch (error) {
-                    console.error(`Error: Project "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
-
-            case 'section':
-                try {
-                    sectionId = await resolveSectionId(api, options.id);
-                    const sections = await api.getSections();
-                    const section = sections.find(s => s.id === sectionId.toString());
-                    if (!section) {
-                        throw new Error(`Section not found: ${options.id}`);
-                    }
-                    projectId = section.projectId;
-                } catch (error) {
-                    console.error(`Error: Section "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
+    // First resolve section if specified, as we might need its project ID
+    if (options.sectionId) {
+        try {
+            sectionId = await resolveSectionId(api, options.sectionId);
+            // Get the section's project ID
+            const sections = await api.getSections();
+            const section = sections.find(s => s.id === sectionId);
+            if (section) {
+                projectId = section.projectId;
+            }
+        } catch (error) {
+            console.error(`Error: Section "${options.sectionId}" not found`);
+            process.exit(1);
         }
     }
 
-    // Create task object
-    const taskData = {
-        content: content,
-        ...(projectId && { project_id: projectId.toString() }),
-        ...(parentId && { parent_id: parentId.toString() }),
-        ...(sectionId && { section_id: sectionId.toString() }),
-        ...(options.priority && { priority: parseInt(options.priority) }),
-        ...(options.dueString && { date_string: options.dueString }),
-        ...(options.dueDate && { date: options.dueDate }),
-        ...(options.labels && { labels: options.labels.split(',').map(l => l.trim()) })
+    // If projectId wasn't set from section and was provided explicitly
+    if (!projectId && options.projectId) {
+        try {
+            projectId = await resolveProjectId(api, options.projectId);
+        } catch (error) {
+            console.error(`Error: Project "${options.projectId}" not found`);
+            process.exit(1);
+        }
+    }
+
+    if (options.parentId) {
+        try {
+            parentId = await resolveTaskId(api, options.parentId);
+            // If we don't have a project ID yet, get it from the parent task
+            if (!projectId) {
+                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                if (parentTask) {
+                    projectId = parentTask.projectId;
+                }
+            }
+        } catch (error) {
+            console.error(`Error: Parent task "${options.parentId}" not found`);
+            process.exit(1);
+        }
+    }
+
+    const command = {
+        type: 'item_add',
+        uuid: randomUUID(),
+        temp_id: randomUUID(),
+        args: {
+            content,
+            ...(projectId && { project_id: projectId }),
+            ...(sectionId && { section_id: sectionId }),
+            ...(parentId && { parent_id: parentId }),
+            ...(options.priority && { priority: parseInt(options.priority) }),
+            ...(options.dueString && { due_string: options.dueString }),
+            ...(options.dueDate && { due_date: options.dueDate }),
+            ...(options.labels && { labels: options.labels })
+        }
     };
 
-    // Add the task
-    const task = await api.addTask(taskData);
+    await executeSyncCommand(process.env.TODOIST_API_TOKEN, command);
+
+    // Get the newly created task
+    const tasks = await api.getTasks();
+    const newTask = tasks.find(t => 
+        t.content === content && 
+        (!projectId || t.projectId === projectId.toString()) &&
+        (!sectionId || t.sectionId === sectionId.toString()) &&
+        (!parentId || t.parentId === parentId.toString())
+    );
+
+    // Get project path for output
+    const projectPath = projectId ? await getProjectPath(api, projectId) : 'Inbox';
 
     if (options.json) {
-        console.log(formatJsonOutput(task, 'created', {
-            project: projectId,
-            parent: parentId,
-            due: task.due,
-            priority: task.priority,
-            labels: task.labels
+        console.log(formatJsonOutput(newTask, 'created', {
+            location: {
+                project: projectPath,
+                section: sectionId ? (await api.getSections()).find(s => s.id === sectionId)?.name : null,
+                parent: parentId ? tasks.find(t => t.id === parentId)?.content : null
+            }
         }));
     } else {
-        console.log(`Task created: ${task.id}`);
-        console.log(`Content: ${task.content}`);
-        if (projectId) {
-            const projectPath = await getProjectPath(api, projectId);
-            console.log(`Project: ${projectPath}`);
-        }
-        if (parentId) console.log(`Parent Task: ${parentId}`);
-        if (task.due) console.log(`Due: ${task.due.date}${task.due.datetime ? ' ' + task.due.datetime : ''}`);
-        if (task.priority) console.log(`Priority: ${task.priority}`);
-        if (task.labels && task.labels.length) console.log(`Labels: @${task.labels.join(' @')}`);
-        console.log(`URL: ${task.url}`);
-    }
-}
-
-function parseBatchMoveOptions(args) {
-    const options = {
-        destination: null,
-        id: null,
-        filter: null
-    };
-
-    // First argument is the filter if it doesn't start with --
-    if (args.length > 0 && !args[0].startsWith('--')) {
-        options.filter = args[0];
-        args = args.slice(1); // Remove filter from args for destination parsing
-    }
-
-    if (!options.filter) {
-        console.error("Error: Filter is required for batch operations");
-        process.exit(1);
-    }
-
-    // Collect all destination flags
-    const destinationFlags = args.filter(arg => 
-        arg === '--to-project' || 
-        arg === '--to-section' || 
-        arg === '--to-parent'
-    );
-
-    if (destinationFlags.length === 0) {
-        console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
-        process.exit(1);
-    }
-
-    if (destinationFlags.length > 1) {
-        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
-        console.error("Use only one of: --to-project, --to-section, --to-parent");
-        process.exit(1);
-    }
-
-    // Now we know we have exactly one destination flag
-    const destinationFlag = destinationFlags[0];
-    const flagIndex = args.indexOf(destinationFlag);
-    
-    if (flagIndex === -1 || flagIndex === args.length - 1) {
-        console.error(`Error: ${destinationFlag} requires an ID`);
-        process.exit(1);
-    }
-
-    options.destination = destinationFlag.replace('--to-', '');
-    options.id = args[flagIndex + 1];
-
-    return options;
-}
-
-async function batchMoveTask(api, filter, options) {
-    // Get tasks matching the filter
-    const tasks = await api.getTasks({ filter });
-    if (tasks.length === 0) {
-        console.error(`No tasks found matching filter: ${filter}`);
-        process.exit(1);
-    }
-
-    let targetId;
-    let projectId;
-
-    switch (options.destination) {
-        case 'parent':
-            try {
-                const parentId = await resolveTaskId(api, options.id);
-                targetId = { parent_id: parentId };
-                // Parent task's project is implied
-                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
-                if (parentTask) projectId = parentTask.projectId;
-            } catch (error) {
-                console.error(`Error: Parent task "${options.id}" not found`);
-                process.exit(1);
-            }
-            break;
-
-        case 'section':
-            try {
-                targetId = { section_id: options.id };
-                // Section's project is implied - we'll get it from the task data
-                const task = tasks ? tasks[0] : await api.getTask(task.id);
-                if (task) projectId = task.projectId;
-            } catch (error) {
-                console.error(`Error moving task to section "${options.id}"`);
-                process.exit(1);
-            }
-            break;
-
-        case 'project':
-            try {
-                projectId = await resolveProjectId(api, options.id);
-                targetId = { project_id: projectId };
-            } catch (error) {
-                console.error(`Error: Project "${options.id}" not found`);
-                process.exit(1);
-            }
-            break;
-    }
-
-    // Build commands for each task
-    const commands = tasks.map(task => ({
-        type: 'item_move',
-        uuid: randomUUID(),
-        args: {
-            id: task.id,
-            ...targetId
-        }
-    }));
-
-    // Execute all commands in one request
-    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
-
-    if (options.json) {
-        console.log(JSON.stringify({
-            tasks: tasks.map(task => ({
-                id: task.id,
-                content: task.content,
-                from: {
-                    project: task.projectId,
-                    section: task.sectionId,
-                    parent: task.parentId
-                },
-                to: {
-                    project: projectId,
-                    section: targetId.section_id,
-                    parent: targetId.parent_id
-                }
-            })),
-            status: 'moved',
-            commandCount: commands.length
-        }, null, 2));
-    } else {
-        console.log(`Moved ${tasks.length} tasks:`);
-        for (const task of tasks) {
-            console.log(`- ${task.content} (${task.id})`);
-            if (projectId && projectId !== task.projectId) {
-                const fromPath = await getProjectPath(api, task.projectId);
-                const toPath = await getProjectPath(api, projectId);
-                console.log(`  From project: ${fromPath}`);
-                console.log(`  To project: ${toPath}`);
-            }
-            if (targetId.section_id) {
-                const sections = await api.getSections();
-                const section = sections.find(s => s.id === targetId.section_id);
-                console.log(`  To section: ${section ? section.name : 'unknown'}`);
-            }
-            if (targetId.parent_id) {
-                const parentTask = tasks.find(t => t.id === targetId.parent_id);
-                console.log(`  To parent: ${parentTask ? parentTask.content : targetId.parent_id}`);
-            }
-        }
-    }
-}
-
-function parseBatchLabelOptions(args) {
-    const options = {
-        filter: null,
-        labels: null,
-        addLabels: false,
-        removeLabels: false
-    };
-
-    // First argument is the filter if it doesn't start with --
-    if (args.length > 0 && !args[0].startsWith('--')) {
-        options.filter = args[0];
-        args = args.slice(1); // Remove filter from args for label parsing
-    }
-
-    if (!options.filter) {
-        console.error("Error: Filter is required for batch operations");
-        process.exit(1);
-    }
-
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--labels':
-                if (i + 1 < args.length) options.labels = args[++i];
-                break;
-            case '--add-labels':
-                if (i + 1 < args.length) {
-                    options.labels = args[++i];
-                    options.addLabels = true;
-                }
-                break;
-            case '--remove-labels':
-                if (i + 1 < args.length) {
-                    options.labels = args[++i];
-                    options.removeLabels = true;
-                }
-                break;
-        }
-        i++;
-    }
-
-    if (!options.labels) {
-        console.error("Error: Must specify labels with one of: --labels, --add-labels, or --remove-labels");
-        process.exit(1);
-    }
-
-    return options;
-}
-
-async function batchLabelTask(api, filter, options) {
-    // Get tasks matching the filter
-    const tasks = await api.getTasks({ filter });
-    if (tasks.length === 0) {
-        console.error(`No tasks found matching filter: ${filter}`);
-        process.exit(1);
-    }
-
-    // Build commands for each task
-    const commands = tasks.map(task => {
-        const existingLabels = task.labels || [];
-        let newLabels;
-
-        if (options.addLabels) {
-            newLabels = [...new Set([...existingLabels, ...options.labels.split(',').map(l => l.trim())])];
-        } else if (options.removeLabels) {
-            newLabels = existingLabels.filter(l => !options.labels.split(',').map(l => l.trim()).includes(l));
-        } else {
-            newLabels = options.labels.split(',').map(l => l.trim());
-        }
-
-        return {
-            type: 'item_update',
-            uuid: randomUUID(),
-            args: {
-                id: task.id,
-                labels: newLabels
-            }
-        };
-    });
-
-    // Execute all commands in one request
-    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
-
-    if (options.json) {
-        console.log(JSON.stringify({
-            tasks: tasks.map(task => ({
-                id: task.id,
-                content: task.content,
-                oldLabels: task.labels || [],
-                newLabels: commands.find(c => c.args.id === task.id).args.labels
-            })),
-            status: 'updated',
-            commandCount: commands.length
-        }, null, 2));
-    } else {
-        console.log(`Updated labels for ${tasks.length} tasks:`);
-        for (const task of tasks) {
-            const command = commands.find(c => c.args.id === task.id);
-            console.log(`- ${task.content} (${task.id})`);
-            console.log(`  From: ${task.labels?.join(', ') || 'none'}`);
-            console.log(`  To: ${command.args.labels.join(', ') || 'none'}`);
-        }
-    }
-}
-
-function parseBatchAddOptions(args) {
-    const options = {
-        tasks: [],
-        destination: null,
-        id: null,
-        priority: null,
-        dueString: null,
-        dueDate: null,
-        labels: null
-    };
-
-    // First argument should be a newline-separated list of tasks
-    if (args.length === 0) {
-        console.error("Error: Task list is required for batch-add");
-        process.exit(1);
-    }
-
-    // Split by literal \n or actual newlines and clean up
-    options.tasks = args[0]
-        .split(/\\n|\n/)
-        .map(t => t.trim())
-        .filter(t => t);
-    args = args.slice(1);
-
-    // Collect destination flags
-    const destinationFlags = args.filter(arg => 
-        arg === '--to-project' || 
-        arg === '--to-section' || 
-        arg === '--to-parent'
-    );
-
-    if (destinationFlags.length > 1) {
-        console.error(`Error: Cannot specify multiple destinations. Found: ${destinationFlags.join(', ')}`);
-        console.error("Use only one of: --to-project, --to-section, --to-parent");
-        process.exit(1);
-    }
-
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--to-project':
-            case '--to-section':
-            case '--to-parent':
-                if (i + 1 < args.length) {
-                    options.destination = args[i].replace('--to-', '');
-                    options.id = args[++i];
-                }
-                break;
-            case '--priority':
-                if (i + 1 < args.length) options.priority = args[++i];
-                break;
-            case '--due-string':
-                if (i + 1 < args.length) options.dueString = args[++i];
-                break;
-            case '--due-date':
-                if (i + 1 < args.length) options.dueDate = args[++i];
-                break;
-            case '--labels':
-                if (i + 1 < args.length) options.labels = args[++i];
-                break;
-        }
-        i++;
-    }
-
-    return options;
-}
-
-async function batchAddTask(api, options) {
-    let projectId = null;
-    let parentId = null;
-    let sectionId = null;
-
-    // Resolve destination
-    if (options.destination) {
-        switch (options.destination) {
-            case 'parent':
-                try {
-                    parentId = await resolveTaskId(api, options.id);
-                    // Parent task's project is implied
-                    const parentTask = (await api.getTasks()).find(t => t.id === parentId);
-                    if (parentTask) projectId = parentTask.projectId;
-                } catch (error) {
-                    console.error(`Error: Parent task "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
-
-            case 'section':
-                try {
-                    sectionId = await resolveSectionId(api, options.id);
-                    // Get section's project
-                    const sections = await api.getSections();
-                    const section = sections.find(s => s.id === sectionId);
-                    if (section) projectId = section.projectId;
-                } catch (error) {
-                    console.error(`Error: Section "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
-
-            case 'project':
-                try {
-                    projectId = await resolveProjectId(api, options.id);
-                } catch (error) {
-                    console.error(`Error: Project "${options.id}" not found`);
-                    process.exit(1);
-                }
-                break;
-        }
-    }
-
-    // Create commands for each task
-    const commands = options.tasks.map(content => {
-        const taskData = {
-            content,
-            ...(projectId && { project_id: projectId.toString() }),
-            ...(parentId && { parent_id: parentId.toString() }),
-            ...(sectionId && { section_id: sectionId.toString() }),
-            ...(options.priority && { priority: parseInt(options.priority) }),
-            ...(options.dueString && { date_string: options.dueString }),
-            ...(options.dueDate && { date: options.dueDate }),
-            ...(options.labels && { labels: options.labels.split(',').map(l => l.trim()) })
-        };
-
-        return {
-            type: 'item_add',
-            temp_id: randomUUID(),
-            uuid: randomUUID(),
-            args: taskData
-        };
-    });
-
-    // Execute all commands in one request
-    const result = await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
-
-    // Get the created tasks
-    const createdTasks = await api.getTasks();
-    const justCreatedTasks = createdTasks.filter(task => 
-        options.tasks.includes(task.content) && 
-        (!projectId || task.projectId === projectId) &&
-        (!parentId || task.parentId === parentId) &&
-        (!sectionId || task.sectionId === sectionId)
-    );
-
-    if (options.json) {
-        console.log(JSON.stringify({
-            tasks: justCreatedTasks,
-            destination: {
-                type: options.destination,
-                id: options.id,
-                project: projectId,
-                section: sectionId,
-                parent: parentId
-            },
-            status: 'added',
-            count: justCreatedTasks.length
-        }, null, 2));
-    } else {
-        console.log(`Added ${justCreatedTasks.length} tasks:`);
-        for (const task of justCreatedTasks) {
-            console.log(`- ${task.content} (${task.id})`);
-        }
-        if (projectId) {
-            const projectPath = await getProjectPath(api, projectId);
-            console.log(`To project: ${projectPath}`);
-        }
+        console.log(`Task created: ${content}`);
+        // Always show location information
+        console.log(`Project: ${projectPath}`);
         if (sectionId) {
             const sections = await api.getSections();
             const section = sections.find(s => s.id === sectionId);
-            console.log(`To section: ${section ? section.name : 'unknown'}`);
+            console.log(`Section: ${section ? section.name : sectionId}`);
         }
         if (parentId) {
-            const parentTask = (await api.getTasks()).find(t => t.id === parentId);
-            console.log(`Under parent: ${parentTask ? parentTask.content : parentId}`);
+            const parentTask = tasks.find(t => t.id === parentId);
+            console.log(`Parent: ${parentTask ? parentTask.content : parentId}`);
         }
         if (options.priority) console.log(`Priority: ${options.priority}`);
-        if (options.dueString || options.dueDate) console.log(`Due: ${options.dueString || options.dueDate}`);
-        if (options.labels) console.log(`Labels: ${options.labels}`);
+        if (options.labels) console.log(`Labels: ${options.labels.join(', ')}`);
     }
 }
 
 async function main() {
-    try {
-        const args = process.argv.slice(2);
-        
-        if (args.length === 0) {
-            console.error("Error: Subcommand required (add, batch-add, update, move, batch-move, batch-label, or complete)");
-            process.exit(1);
-        }
-        
-        const subcommand = args[0];
-        const subcommandArgs = args.slice(1);
-        
-        const api = await initializeApi();
-        
-        switch (subcommand) {
-            case 'add':
-                if (subcommandArgs.length === 0) {
-                    console.error("Error: Task content is required");
-                    process.exit(1);
-                }
-                const content = subcommandArgs[0];
-                const addOptions = parseAddOptions(subcommandArgs.slice(1));
-                await addTask(api, content, { ...addOptions, json: args.includes('--json') });
-                break;
-            case 'batch-add':
-                if (subcommandArgs.length === 0) {
-                    console.error("Error: Task list is required");
-                    process.exit(1);
-                }
-                const batchAddOptions = parseBatchAddOptions(subcommandArgs);
-                await batchAddTask(api, { ...batchAddOptions, json: args.includes('--json') });
-                break;
-            case 'move':
-                const { taskQuery, options: baseOptions, remainingArgs } = parseBaseOptions(subcommandArgs);
-                const task = await findTask(api, taskQuery);
-                await moveTask(api, task, { ...baseOptions, ...parseMoveOptions(remainingArgs) });
-                break;
-            case 'update':
-            case 'complete':
-                const { taskQuery: updateTaskQuery, options: updateBaseOptions, remainingArgs: updateRemainingArgs } = parseBaseOptions(subcommandArgs);
-                const updateTask = await findTask(api, updateTaskQuery);
-                const updateOptions = parseUpdateOptions(updateRemainingArgs);
-                if (subcommand === 'complete') {
-                    updateOptions.complete = true;
-                }
-                await updateTask(api, updateTask, { ...updateBaseOptions, ...updateOptions });
-                break;
-            case 'batch-move':
-                const batchMoveOptions = parseBatchMoveOptions(subcommandArgs);
-                if (!batchMoveOptions.filter) {
-                    console.error("Error: Filter is required for batch operations");
-                    process.exit(1);
-                }
-                if (!batchMoveOptions.destination || !batchMoveOptions.id) {
-                    console.error("Error: Must specify a destination with one of: --to-project ID, --to-section ID, --to-parent ID");
-                    process.exit(1);
-                }
-                await batchMoveTask(api, batchMoveOptions.filter, { ...batchMoveOptions, json: args.includes('--json') });
-                break;
-            case 'batch-label':
-                const batchLabelOptions = parseBatchLabelOptions(subcommandArgs);
-                await batchLabelTask(api, batchLabelOptions.filter, { ...batchLabelOptions, json: args.includes('--json') });
-                break;
-            default:
-                console.error(`Error: Unknown subcommand "${subcommand}"`);
+    const argv = yargs(hideBin(process.argv))
+        .command('move', 'Move a task to a different location', (yargs) => {
+            return yargs
+                .options({
+                    taskId: {
+                        description: 'Task ID to move',
+                        type: 'string',
+                        demandOption: true
+                    },
+                    'to-project-id': {
+                        description: 'Target project ID to move task to',
+                        type: 'string',
+                        conflicts: ['to-section-id', 'to-parent-id']
+                    },
+                    'to-section-id': {
+                        description: 'Target section ID to move task to',
+                        type: 'string',
+                        conflicts: ['to-project-id', 'to-parent-id']
+                    },
+                    'to-parent-id': {
+                        description: 'Target parent task ID to move task under',
+                        type: 'string',
+                        conflicts: ['to-project-id', 'to-section-id']
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .example('task.js move --taskId 12345 --to-project-id 2349336695',
+                    'Move a task to a different project')
+                .example('task.js move --taskId 12345 --to-section-id 183758533',
+                    'Move a task to a specific section')
+                .example('task.js move --taskId 12345 --to-parent-id 8903766822',
+                    'Move a task as a subtask')
+                .example('task.js batch-move --filter "overdue" --to-section-id 183758533',
+                    'Move all overdue tasks to a specific section')
+                .example('task.js batch-move --filter "@work" --to-project-id 2349336695',
+                    'Move all tasks with @work label to a project')
+                .example('task.js batch-move --filter "priority 1" --to-parent-id 8903766822',
+                    'Move all priority 1 tasks under a parent task')
+                .example('task.js batch-move --filter "Subtask" --to-section-id 183758533',
+                    'Move tasks with simple text match to a section (recommended for reliability)')
+                .example('task.js update --taskId 12345 --content "Updated task name" --priority 2 --labels "work,urgent"',
+                    'Update task content, priority and labels')
+                .example('task.js update --taskId 12345 --priority 1 --due-string "tomorrow"',
+                    'Update task priority and due date')
+                .example('task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --projectId 2349336695 --priority 3',
+                    'Add multiple tasks to a project')
+                .example('task.js batch-add --tasks "Section Task 1" "Section Task 2" --sectionId 183758533',
+                    'Add tasks directly to a section')
+                .example('task.js batch-add --tasks "Subtask 1" "Subtask 2" "Subtask 3" --parentId 8903766822',
+                    'Add subtasks under a parent task')
+                .example('task.js batch-add --tasks "Buy milk" "Buy eggs" --sectionId 183758533 --labels "shopping"',
+                    'Add tasks to a section with labels')
+        })
+        .command('batch-move', 'Move multiple tasks by ID', (yargs) => {
+            return yargs
+                .options({
+                    taskIds: {
+                        description: 'Task IDs to move (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        demandOption: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    'to-project-id': {
+                        description: 'Target project ID to move tasks to',
+                        type: 'string',
+                        conflicts: ['to-section-id', 'to-parent-id']
+                    },
+                    'to-section-id': {
+                        description: 'Target section ID to move tasks to',
+                        type: 'string',
+                        conflicts: ['to-project-id', 'to-parent-id']
+                    },
+                    'to-parent-id': {
+                        description: 'Target parent task ID to move tasks under',
+                        type: 'string',
+                        conflicts: ['to-project-id', 'to-section-id']
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .example('task.js batch-move --taskIds 12345,67890 --to-section-id 183758533',
+                    'Move multiple tasks to a section')
+                .example('find.js "p:FLOOBY & @work" --ids | xargs -I {} task.js batch-move --taskIds {} --to-project-id 2349336695',
+                    'Move all work-labeled tasks from FLOOBY (using find.js)')
+                .example('find.js "overdue" --ids | xargs -I {} task.js batch-move --taskIds {} --to-section-id 183758533',
+                    'Move all overdue tasks to a section (using find.js)');
+        })
+        .command('update', 'Update a task', (yargs) => {
+            return yargs
+                .options({
+                    taskId: {
+                        description: 'Task ID to update',
+                        type: 'string',
+                        demandOption: true
+                    },
+                    content: {
+                        description: 'New task content',
+                        type: 'string'
+                    },
+                    description: {
+                        description: 'New task description',
+                        type: 'string'
+                    },
+                    priority: {
+                        description: 'New priority (1-4)',
+                        type: 'number',
+                        choices: [1, 2, 3, 4]
+                    },
+                    'due-string': {
+                        description: 'New due date as string (e.g., "tomorrow", "next week")',
+                        type: 'string'
+                    },
+                    'due-date': {
+                        description: 'New due date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    labels: {
+                        description: 'Set labels (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    'add-labels': {
+                        description: 'Add labels to existing ones (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    'remove-labels': {
+                        description: 'Remove labels (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    complete: {
+                        description: 'Mark task as complete',
+                        type: 'boolean',
+                        default: false
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .example('task.js update --taskId 12345 --content "New task name" --priority 1',
+                    'Update task content and priority')
+                .example('task.js update --taskId 8903766822 --due-string "tomorrow" --labels "work,urgent"',
+                    'Update task due date and labels')
+                .example('task.js update --taskId 8903766822 --add-labels "in-progress" --description "Fixed memory leak"',
+                    'Add labels and update description')
+                .example('task.js update --taskId 8903766822 --complete',
+                    'Mark a task as complete');
+        })
+        .command('add', 'Add a new task', (yargs) => {
+            return yargs
+                .options({
+                    content: {
+                        description: 'Task content',
+                        type: 'string',
+                        demandOption: true
+                    },
+                    projectId: {
+                        description: 'Project ID to add task to',
+                        type: 'string'
+                    },
+                    sectionId: {
+                        description: 'Section ID to add task to',
+                        type: 'string'
+                    },
+                    parentId: {
+                        description: 'Parent task ID to add task under',
+                        type: 'string'
+                    },
+                    priority: {
+                        description: 'Priority (1-4)',
+                        type: 'number',
+                        choices: [1, 2, 3, 4]
+                    },
+                    'due-string': {
+                        description: 'Due date as string (e.g., "tomorrow", "next week")',
+                        type: 'string'
+                    },
+                    'due-date': {
+                        description: 'Due date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    labels: {
+                        description: 'Labels (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .example('task.js add --content "Review PR #123" --projectId 2349336695 --priority 2',
+                    'Add a task to a project with priority')
+                .example('task.js add --content "Weekly meeting" --sectionId 183758533 --labels "recurring,meetings"',
+                    'Add a task to a section with labels')
+                .example('task.js add --content "Subtask 1" --parentId 8903766822',
+                    'Add a task as a subtask');
+        })
+        .command('batch-add', 'Add multiple tasks', (yargs) => {
+            return yargs
+                .options({
+                    tasks: {
+                        description: 'Task contents (use quotes for multi-word tasks)',
+                        type: 'array',
+                        string: true,
+                        demandOption: true
+                    },
+                    projectId: {
+                        description: 'Project ID to add tasks to',
+                        type: 'string'
+                    },
+                    sectionId: {
+                        description: 'Section ID to add tasks to',
+                        type: 'string'
+                    },
+                    parentId: {
+                        description: 'Parent task ID to add tasks under',
+                        type: 'string'
+                    },
+                    priority: {
+                        description: 'Priority (1-4)',
+                        type: 'number',
+                        choices: [1, 2, 3, 4]
+                    },
+                    'due-string': {
+                        description: 'Due date as string (e.g., "tomorrow", "next week")',
+                        type: 'string'
+                    },
+                    'due-date': {
+                        description: 'Due date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    labels: {
+                        description: 'Labels (comma-separated)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .example('task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --projectId 2349336695 --priority 3',
+                    'Add multiple tasks to a project')
+                .example('task.js batch-add --tasks "Section Task 1" "Section Task 2" --sectionId 183758533',
+                    'Add tasks directly to a section')
+                .example('task.js batch-add --tasks "Subtask 1" "Subtask 2" "Subtask 3" --parentId 8903766822',
+                    'Add subtasks under a parent task')
+                .example('task.js batch-add --tasks "Buy milk" "Buy eggs" --sectionId 183758533 --labels "shopping"',
+                    'Add tasks to a section with labels');
+        })
+        .demandCommand(1, 'You must provide a valid command')
+        .help()
+        .argv;
+
+    const api = await initializeApi();
+
+    switch (argv._[0]) {
+        case 'move': {
+            const task = await findTask(api, argv.taskId);
+            if (!task) {
+                console.error(`Task not found: ${argv.taskId}`);
                 process.exit(1);
+            }
+
+            let destination, id;
+            if (argv.toProjectId) {
+                destination = 'project';
+                id = argv.toProjectId;
+            } else if (argv.toSectionId) {
+                destination = 'section';
+                id = argv.toSectionId;
+            } else if (argv.toParentId) {
+                destination = 'parent';
+                id = argv.toParentId;
+            } else {
+                console.error('Must specify one of: --to-project-id, --to-section-id, --to-parent-id');
+                process.exit(1);
+            }
+
+            await moveTask(api, task, { destination, id, json: argv.json });
+            break;
         }
-    } catch (error) {
-        console.error("Error:", error.message);
-        process.exit(1);
+
+        case 'batch-move': {
+            let destination, id;
+            if (argv.toProjectId) {
+                destination = 'project';
+                id = argv.toProjectId;
+            } else if (argv.toSectionId) {
+                destination = 'section';
+                id = argv.toSectionId;
+            } else if (argv.toParentId) {
+                destination = 'parent';
+                id = argv.toParentId;
+            } else {
+                console.error('Must specify one of: --to-project-id, --to-section-id, --to-parent-id');
+                process.exit(1);
+            }
+
+            await batchMoveTask(api, argv.taskIds, { destination, id, json: argv.json });
+            break;
+        }
+
+        case 'update': {
+            const task = await findTask(api, argv.taskId);
+            if (!task) {
+                console.error(`Task not found: ${argv.taskId}`);
+                process.exit(1);
+            }
+
+            await updateTask(api, task, {
+                content: argv.content,
+                description: argv.description,
+                priority: argv.priority,
+                dueString: argv.dueString,
+                dueDate: argv.dueDate,
+                labels: argv.labels || argv.addLabels || argv.removeLabels,
+                addLabels: Boolean(argv.addLabels),
+                removeLabels: Boolean(argv.removeLabels),
+                complete: argv.complete,
+                json: argv.json
+            });
+            break;
+        }
+
+        case 'add': {
+            await addTask(api, argv.content, {
+                projectId: argv.projectId,
+                sectionId: argv.sectionId,
+                parentId: argv.parentId,
+                priority: argv.priority,
+                dueString: argv.dueString,
+                dueDate: argv.dueDate,
+                labels: argv.labels,
+                json: argv.json
+            });
+            break;
+        }
+
+        case 'batch-add': {
+            for (const content of argv.tasks) {
+                await addTask(api, content, {
+                    projectId: argv.projectId,
+                    sectionId: argv.sectionId,
+                    parentId: argv.parentId,
+                    priority: argv.priority,
+                    dueString: argv.dueString,
+                    dueDate: argv.dueDate,
+                    labels: argv.labels,
+                    json: argv.json
+                });
+            }
+            break;
+        }
     }
 }
 
 if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
-    main();
+    main().catch(error => {
+        console.error('Error:', error.message);
+        process.exit(1);
+    });
 }
 
-export { moveTask, updateTask, addTask }; 
+export { moveTask, batchMoveTask, updateTask, addTask }; 

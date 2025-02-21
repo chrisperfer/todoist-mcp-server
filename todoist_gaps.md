@@ -335,3 +335,90 @@ Migration Strategy:
    - Automated consistency checking
    - Better help output formatting
    - Links between documentation levels 
+
+## Task Tool Improvements Needed
+
+1. Update ID Resolution Functions
+   - Current: `findTask`, `resolveTaskId`, `resolveProjectId`, and `resolveSectionId` support both IDs and names
+   - Need: Remove name matching to enforce ID-only usage
+   - Files to update: 
+     * `tools/todoist/lib/task-utils.js`
+     * `tools/todoist/lib/id-utils.js`
+   - This aligns with other tools in the codebase and removes ambiguity
+   - Will require users to use list commands to find IDs first 
+
+2. Fix Parameter Name Mismatch in addTask ✅
+   - Current: CLI uses projectId/sectionId/parentId but function expects project/section/parent
+   - Tasks are being created in Inbox because parameters aren't being passed correctly
+   - Need to update addTask function to match new parameter names
+   - Files to update:
+     * `tools/todoist/task.js`
+   - This is causing tasks to be created in Inbox instead of specified locations
+   - Fixed: Updated parameter names and improved output to always show location information
+
+3. Enhance Task Creation Output ✅
+   - Always show where a task was created (project/section/parent)
+   - Include project name even if it's Inbox
+   - Make JSON output include full location information
+   - Consider adding similar location output improvements to move/update commands
+   - Fixed: Now showing complete location information for task creation
+
+4. Test All Subcommands ✅
+   - Need to verify all subcommands work correctly with IDs:
+     * move ✅ - Works correctly with section IDs
+     * batch-move ✅ - Works but needs simpler filters
+     * update ✅ - Works correctly for content and priority
+     * batch-add ✅ - Works correctly with sections and priorities
+   - Test specifically in FLOOBY project
+   - Verify correct project/section inheritance
+   - Check output formatting and location information
+   - Note: Complex filters in batch-move (e.g., "p:Project & search:term") don't work well
+   - Consider improving filter handling in batch operations
+
+5. Filter Handling Improvements Needed
+   - Complex filters don't work well in batch operations
+   - Combining project filters with search terms fails
+   - Need to document working filter patterns
+   - Consider adding filter validation/preprocessing
+   - Examples of problematic filters:
+     * "p:Project & search:term"
+     * Multiple search terms
+     * Special characters in search
+
+6. Section Validation Workaround Added ✅
+   - REST API's getSections() is unreliable for validation
+   - Added commented code showing ideal validation
+   - Currently skipping validation and trusting section IDs
+   - Updated help examples to show all tested use cases
+   - Added note about simple filters being more reliable
+   - Long-term fix: Migrate to Sync API for section operations
+
+## Documentation Organization Gaps
+
+1. Documentation Distribution:
+   - Documentation currently spread across multiple locations:
+     * README.md (project overview and examples)
+     * package.json toolDocs (detailed command reference)
+     * --help CLI output (immediate guidance)
+   - Challenges:
+     * Maintenance overhead
+     * Risk of inconsistency
+     * Potentially overwhelming --help output
+     * No clear hierarchy of documentation
+
+2. Proposed Improvements:
+   - Implement tiered documentation approach:
+     * Streamlined --help for common options
+     * New --help-all for comprehensive reference
+     * Generate both from toolDocs automatically
+   - Clarify documentation roles:
+     * README.md: Getting started only
+     * toolDocs: Single source of truth
+     * CLI help: Quick reference with pointers to full docs
+
+3. Implementation Needs:
+   - Documentation generation system
+   - Clear separation of concerns between doc types
+   - Automated consistency checking
+   - Better help output formatting
+   - Links between documentation levels 

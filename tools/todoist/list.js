@@ -119,17 +119,28 @@ async function listTasks(options = {}) {
 
         // Apply filter if specified
         if (options.filter) {
-            const filterResponse = await fetch(`${SYNC_API_URL}/query`, {
-                method: 'POST',
+            console.log(`Applying filter: ${options.filter}`);
+            const url = `https://api.todoist.com/rest/v2/tasks?filter=${encodeURIComponent(options.filter)}`;
+            console.log(`REST API URL: ${url}`);
+            const response = await fetch(url, {
+                method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ queries: [{ query: options.filter }] })
+                }
             });
-            const filterResult = await filterResponse.json();
-            if (filterResult.query_result) {
-                const filteredIds = new Set(filterResult.query_result[0].data.map(item => item.id));
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Response status: ${response.status}`);
+                console.error(`Response text: ${errorText}`);
+                throw new Error(`Failed to fetch tasks: ${response.statusText}`);
+            }
+
+            const items = await response.json();
+            console.log(`Filtered items count: ${items ? items.length : 0}`);
+            if (items) {
+                const filteredIds = new Set(items.map(item => item.id));
                 tasks = tasks.filter(task => filteredIds.has(task.id));
             }
         }
@@ -387,28 +398,32 @@ Global Options:
   --help         Show this help message
 
 Task Options:
-  --filter <filter>      Use Todoist filter query (e.g., "today", "p:Project Name")
+  --filter <filter>      Use Todoist filter query (e.g., "today", "#Project 📁" - include emojis if present in project name)
   --taskId <id>         Get detailed information for a specific task
 
 Project Options:
-  --filter <text>        Filter projects by name (e.g., "FLOOBY")
+  --filter <text>        Filter projects by name (include emojis if present, e.g., "FLOOBY 🐒")
   --projectId <id>       Get detailed information for a specific project
   --data                 Include tasks, sections, and notes (use with --projectId)
   --info                 Include only project info and notes (use with --projectId)
 
 Section Options:
   --projectId <id>       Filter sections by project ID
-  --filter <filter>      Filter sections by name or project (e.g., "Meeting" or "p:FLOOBY")
+  --filter <filter>      Filter sections by name or project (e.g., "Meeting" or "p:FLOOBY 🐒")
 
 Examples:
   list tasks --filter "today"
+  list tasks --filter "#FLOOBY 🐒"                    # Include emoji if project has one
   list tasks --filter "p:Work & !p:Work/Archive"
   list tasks --taskId 123456789
-  list projects --filter "FLOOBY"
+  list projects --filter "FLOOBY 🐒"                  # Include emoji if project has one
   list projects --projectId 123456789 --data
   list projects --projectId 123456789 --info
-  list sections --filter "p:FLOOBY"
+  list sections --filter "p:FLOOBY 🐒"                # Include emoji if project has one
   list sections --filter "Meeting"
+
+Note: When filtering by project name, make sure to include any emojis that are part of the project name.
+      For example, use "#FLOOBY 🐒" instead of just "#FLOOBY" if the project includes the emoji.
 `);
 }
 
