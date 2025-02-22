@@ -117,8 +117,11 @@ async function batchMoveTask(api, taskIds, options) {
     // Get all tasks first
     const tasks = await api.getTasks();
     
+    // Handle comma-separated IDs and convert to array
+    const idArray = Array.isArray(taskIds) ? taskIds : taskIds.split(',');
+    
     // Find tasks by ID
-    const tasksToMove = taskIds.map(id => {
+    const tasksToMove = idArray.map(id => {
         const task = tasks.find(t => t.id === id);
         if (!task) {
             console.error(`Task not found: ${id}`);
@@ -128,10 +131,92 @@ async function batchMoveTask(api, taskIds, options) {
     });
 
     console.log(`Moving ${tasksToMove.length} tasks`);
-    
-    // Move each task
-    for (const task of tasksToMove) {
-        await moveTask(api, task, options);
+
+    // Determine target based on options
+    let targetId;
+    let projectId;
+
+    switch (options.destination) {
+        case 'parent':
+            try {
+                const parentId = await resolveTaskId(api, options.id);
+                targetId = { parent_id: parentId };
+                const parentTask = tasks.find(t => t.id === parentId);
+                if (parentTask) projectId = parentTask.projectId;
+            } catch (error) {
+                console.error(`Error: Parent task "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
+
+        case 'section':
+            try {
+                targetId = { section_id: options.id };
+                const sections = await api.getSections();
+                const section = sections.find(s => s.id === options.id);
+                if (section) {
+                    projectId = section.projectId;
+                }
+            } catch (error) {
+                console.error(`Error moving task to section "${options.id}"`);
+                process.exit(1);
+            }
+            break;
+
+        case 'project':
+            try {
+                projectId = await resolveProjectId(api, options.id);
+                targetId = { project_id: projectId };
+            } catch (error) {
+                console.error(`Error: Project "${options.id}" not found`);
+                process.exit(1);
+            }
+            break;
+    }
+
+    // Create move commands for all tasks
+    const commands = tasksToMove.map(task => ({
+        type: 'item_move',
+        uuid: randomUUID(),
+        args: {
+            id: task.id,
+            ...targetId
+        }
+    }));
+
+    // Execute all move commands in a single batch
+    await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
+
+    // Output results
+    if (options.json) {
+        console.log(formatJsonOutput(tasksToMove, 'moved', {
+            from: await Promise.all(tasksToMove.map(async task => ({
+                project: await getProjectPath(api, task.projectId),
+                section: task.sectionId
+            }))),
+            to: {
+                project: projectId ? await getProjectPath(api, projectId) : undefined,
+                section: targetId.section_id,
+                parent: targetId.parent_id
+            }
+        }));
+    } else {
+        for (const task of tasksToMove) {
+            console.log(`Task moved: ${task.content}`);
+            if (projectId !== task.projectId) {
+                console.log(`From project: ${await getProjectPath(api, task.projectId)}`);
+                console.log(`To project: ${await getProjectPath(api, projectId)}`);
+            }
+            if (targetId.section_id) {
+                const sections = await api.getSections();
+                const toSection = sections.find(s => s.id === targetId.section_id);
+                console.log(`To section: ${toSection ? toSection.name : 'unknown'}`);
+            }
+            if (targetId.parent_id) {
+                const parentTask = tasks.find(t => t.id === targetId.parent_id);
+                console.log(`To parent: ${parentTask ? parentTask.content : targetId.parent_id}`);
+            }
+        }
     }
 }
 

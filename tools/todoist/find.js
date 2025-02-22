@@ -25,7 +25,13 @@ async function main() {
     const sections = await api.getSections();
 
     if (ids) {
-      tasks.forEach(task => console.log(task.id));
+      // Output IDs in the format that works with batch-move
+      process.stdout.write('--taskIds ');
+      tasks.forEach((task, i) => {
+        process.stdout.write(`"${task.id}"`);
+        if (i < tasks.length - 1) process.stdout.write(' ');
+      });
+      process.stdout.write('\n');
     } else if (json) {
       // Enhance tasks with project and section names
       const enhancedTasks = await Promise.all(tasks.map(async task => ({
