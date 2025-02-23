@@ -582,15 +582,34 @@ async function batchAddTasks(api, contents, options = {}) {
 
 async function main() {
     const argv = yargs(hideBin(process.argv))
+        .usage('Usage: $0 <command> [options]')
+        // Batch move examples
+        .example('$0 batch-move --taskIds "12345" "67890" --to-project-id "2349336695"', 'Move tasks to project')
+        .example('$0 batch-move --taskIds "12345" "67890" --to-section-id "183758533"', 'Move tasks to section')
+        .example('$0 batch-move --taskIds "12345" "67890" --to-parent-id "8903766822"', 'Move tasks as subtasks')
+        // Batch update examples
+        .example('$0 batch-update --taskIds "12345" "67890" --content "Updated task name"', 'Update task content')
+        .example('$0 batch-update --taskIds "12345" "67890" --priority 1 --labels "work" "urgent"', 'Update priority and labels')
+        .example('$0 batch-update --taskIds "12345" "67890" --due-string "tomorrow" --description "New description"', 'Update due date and description')
+        .example('$0 batch-update --taskIds "12345" "67890" --add-labels "work" "urgent"', 'Add labels to existing ones')
+        .example('$0 batch-update --taskIds "12345" "67890" --remove-labels "work" "urgent"', 'Remove specific labels')
+        .example('$0 batch-update --taskIds "12345" "67890" --complete', 'Mark tasks as complete')
+        // Batch add examples
+        .example('$0 batch-add --tasks "Task 1" "Task 2"', 'Add tasks to inbox')
+        .example('$0 batch-add --tasks "Project Task 1" "Project Task 2" --projectId "2349336695"', 'Add tasks to project')
+        .example('$0 batch-add --tasks "Section Task 1" "Section Task 2" --sectionId "183758533"', 'Add tasks to section')
+        .example('$0 batch-add --tasks "Subtask 1" "Subtask 2" --parentId "8903766822"', 'Add tasks as subtasks')
+        .example('$0 batch-add --tasks "Full Task 1" "Full Task 2" --projectId "2349336695" --sectionId "183758533" --priority 1 --labels "work" "urgent"', 'Add tasks with all options')
+        // Integration example
+        .example('find.js "overdue" --ids | xargs $0 batch-move --taskIds --to-section-id "183758533"', 'Move overdue tasks')
         .command('batch-move', 'Move multiple tasks by ID', (yargs) => {
             return yargs
                 .options({
                     taskIds: {
-                        description: 'Task IDs to move (comma-separated)',
+                        description: 'Task IDs to move (space-separated, quoted)',
                         type: 'array',
                         string: true,
-                        demandOption: true,
-                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                        demandOption: true
                     },
                     'to-project-id': {
                         description: 'Target project ID to move tasks to',
@@ -612,23 +631,16 @@ async function main() {
                         type: 'boolean',
                         default: false
                     }
-                })
-                .example('task.js batch-move --taskIds 12345,67890 --to-section-id 183758533',
-                    'Move multiple tasks to a section')
-                .example('find.js "p:FLOOBY & @work" --ids | xargs task.js batch-move --taskIds --to-project-id 2349336695',
-                    'Move all work-labeled tasks from FLOOBY')
-                .example('find.js "overdue" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533',
-                    'Move all overdue tasks to a section');
+                });
         })
         .command('batch-update', 'Update multiple tasks', (yargs) => {
             return yargs
                 .options({
                     taskIds: {
-                        description: 'Task IDs to update',
+                        description: 'Task IDs to update (space-separated, quoted)',
                         type: 'array',
                         string: true,
-                        demandOption: true,
-                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                        demandOption: true
                     },
                     content: {
                         description: 'New task content',
@@ -652,22 +664,19 @@ async function main() {
                         type: 'string'
                     },
                     labels: {
-                        description: 'Set labels (comma-separated)',
+                        description: 'Set labels (space-separated, quoted)',
                         type: 'array',
-                        string: true,
-                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                        string: true
                     },
                     'add-labels': {
-                        description: 'Add labels to existing ones (comma-separated)',
+                        description: 'Add labels to existing ones (space-separated, quoted)',
                         type: 'array',
-                        string: true,
-                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                        string: true
                     },
                     'remove-labels': {
-                        description: 'Remove labels (comma-separated)',
+                        description: 'Remove labels (space-separated, quoted)',
                         type: 'array',
-                        string: true,
-                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                        string: true
                     },
                     complete: {
                         description: 'Mark tasks as complete',
@@ -679,17 +688,7 @@ async function main() {
                         type: 'boolean',
                         default: false
                     }
-                })
-                .example('task.js batch-update --taskIds 12345,67890 --content "Updated task name" --priority 1',
-                    'Update content and priority for multiple tasks')
-                .example('find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1',
-                    'Set priority for all overdue tasks')
-                .example('find.js "p:FLOOBY & @test" --ids | xargs task.js batch-update --taskIds --labels "work,urgent"',
-                    'Update labels for all test tasks in FLOOBY')
-                .example('find.js "no date" --ids | xargs task.js batch-update --taskIds --due-string "tomorrow"',
-                    'Set due date for all tasks without one')
-                .example('find.js "completed" --ids | xargs task.js batch-update --taskIds --complete',
-                    'Mark multiple tasks as complete');
+                });
         })
         .command('batch-add', 'Add multiple tasks', (yargs) => {
             return yargs
@@ -726,7 +725,7 @@ async function main() {
                         type: 'string'
                     },
                     labels: {
-                        description: 'Labels (comma-separated)',
+                        description: 'Labels (space-separated, quoted)',
                         type: 'array',
                         string: true,
                         coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
@@ -736,13 +735,7 @@ async function main() {
                         type: 'boolean',
                         default: false
                     }
-                })
-                .example('task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --projectId 2349336695 --priority 3',
-                    'Add multiple tasks to a project')
-                .example('task.js batch-add --tasks "Section Task 1" "Section Task 2" --sectionId 183758533 --labels "work"',
-                    'Add tasks to a section with labels')
-                .example('task.js batch-add --tasks "Subtask 1" "Subtask 2" --parentId 8903766822 --due-string "tomorrow"',
-                    'Add subtasks with due date');
+                });
         })
         .demandCommand(1, 'You must provide a valid command')
         .help()
