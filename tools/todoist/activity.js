@@ -44,9 +44,6 @@ function cleanEventData(event, removeParentId = false) {
 // Calculate health indicators for an item based on its events
 function calculateHealthIndicators(events) {
     if (!events || events.length === 0) return null;
-
-    console.log('\nCalculating health for events:', events.length);
-    console.log('Raw events:', JSON.stringify(events, null, 2));
     
     const now = new Date();
     const indicators = {
@@ -66,13 +63,6 @@ function calculateHealthIndicators(events) {
     let lastDueDate = null;
     events.forEach(event => {
         const dueDate = event.extra_data?.due_date;
-        console.log('Processing event:', {
-            type: event.event_type,
-            date: event.event_date,
-            due_date: dueDate,
-            extra_data: event.extra_data
-        });
-        
         if (dueDate) {
             if (lastDueDate) {
                 const oldDate = new Date(lastDueDate);
@@ -80,11 +70,6 @@ function calculateHealthIndicators(events) {
                 if (newDate > oldDate) {
                     indicators.due_date_changes++;
                     indicators.total_postponed_days += Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24));
-                    console.log('Found due date change:', {
-                        old: lastDueDate,
-                        new: dueDate,
-                        days_postponed: Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24))
-                    });
                 }
             }
             lastDueDate = dueDate;
@@ -105,7 +90,6 @@ function calculateHealthIndicators(events) {
         }
     }
 
-    console.log('Calculated health indicators:', indicators);
     return indicators;
 }
 
@@ -113,17 +97,9 @@ function calculateHealthIndicators(events) {
 function addHealthIndicators(itemStructure) {
     if (!itemStructure) return itemStructure;
 
-    console.log('\nAdding health indicators to item:', {
-        has_events: !!itemStructure.item_events,
-        event_count: itemStructure.item_events?.length,
-        has_sub_items: !!itemStructure.sub_items,
-        sub_item_count: Object.keys(itemStructure.sub_items || {}).length
-    });
-
     // Add health indicators to the current item
     if (itemStructure.item_events && itemStructure.item_events.length > 0) {
         itemStructure.health = calculateHealthIndicators(itemStructure.item_events);
-        console.log('Added health indicators:', itemStructure.health);
     }
 
     // Recursively add health indicators to sub-items
@@ -137,10 +113,6 @@ function addHealthIndicators(itemStructure) {
 }
 
 function groupActivities(events) {
-    console.log('\n=== Starting groupActivities ===');
-    console.log('Total events:', events?.length);
-    console.log('Event types:', events?.map(e => e.object_type).filter((v, i, a) => a.indexOf(v) === i));
-
     const groups = {
         projects: {},
         other_events: []
@@ -149,7 +121,6 @@ function groupActivities(events) {
     if (!events) return groups;
 
     // First pass: Create project structure and collect all events
-    console.log('\nFirst pass: Creating project structure');
     events.forEach(event => {
         // Create project structure for any referenced project
         const projectId = String(event.parent_project_id || (event.object_type === 'project' ? event.object_id : null));
@@ -161,16 +132,10 @@ function groupActivities(events) {
                 comments: [],
                 child_projects: {}
             };
-            console.log('Created project structure for:', projectId);
         }
 
         // Add project events to their structure
         if (event.object_type === 'project') {
-            console.log('Found project event:', {
-                event_type: event.event_type,
-                project_id: event.object_id,
-                extra_data: event.extra_data
-            });
             const eventProjectId = String(event.object_id);
             if (!groups.projects[eventProjectId]) {
                 groups.projects[eventProjectId] = {
@@ -180,20 +145,14 @@ function groupActivities(events) {
                     comments: [],
                     child_projects: {}
                 };
-                console.log('Created project structure for:', eventProjectId);
             }
             groups.projects[eventProjectId].project_events.push(cleanEventData(event));
         }
     });
 
     // Second pass: Establish project hierarchy
-    console.log('\nSecond pass: Establishing project hierarchy');
     events.forEach(event => {
         if (event.object_type === 'project' && event.extra_data?.parent_id) {
-            console.log('Found project with parent:', {
-                project_id: event.object_id,
-                parent_id: event.extra_data.parent_id
-            });
             const projectId = String(event.object_id);
             const parentProjectId = String(event.extra_data.parent_id);
             
@@ -201,18 +160,8 @@ function groupActivities(events) {
                 // Move project to its parent's child_projects
                 groups.projects[parentProjectId].child_projects[projectId] = groups.projects[projectId];
                 delete groups.projects[projectId];
-                console.log('Moved project to parent:', {
-                    project_id: projectId,
-                    parent_id: parentProjectId
-                });
             }
         }
-    });
-
-    // Log project structure before third pass
-    console.log('\nProject structure before third pass:', {
-        project_ids: Object.keys(groups.projects),
-        project_count: Object.keys(groups.projects).length
     });
 
     // Third pass: Handle sections, items, and comments
@@ -232,22 +181,12 @@ function groupActivities(events) {
                 groups.other_events.push(cleanEventData(event));
             }
         } else if (event.object_type === 'item') {
-            console.log('\nProcessing item event:', {
-                event_type: event.event_type,
-                object_id: event.object_id,
-                parent_project_id: event.parent_project_id,
-                parent_id: event.parent_id,
-                section_id: event.extra_data?.section_id
-            });
-            
             const projectId = String(event.parent_project_id);
             if (projectId) {
                 let targetProject = groups.projects[projectId];
-                console.log('Found target project:', !!targetProject);
                 
                 // If project not found at root, search in child_projects
                 if (!targetProject) {
-                    console.log('Searching in child projects...');
                     for (const rootProject of Object.values(groups.projects)) {
                         const findProject = (proj) => {
                             if (proj.child_projects[projectId]) {
@@ -259,10 +198,7 @@ function groupActivities(events) {
                             }
                             return false;
                         };
-                        if (findProject(rootProject)) {
-                            console.log('Found project in child projects');
-                            break;
-                        }
+                        if (findProject(rootProject)) break;
                     }
                 }
 
@@ -270,14 +206,6 @@ function groupActivities(events) {
                     const itemId = String(event.object_id);
                     const sectionId = event.extra_data?.section_id ? String(event.extra_data.section_id) : undefined;
                     const parentItemId = event.parent_id ? String(event.parent_id) : undefined;
-
-                    console.log('Adding item to project:', {
-                        itemId,
-                        sectionId,
-                        parentItemId,
-                        isSubItem: !!parentItemId,
-                        inSection: !!sectionId
-                    });
 
                     // Function to create item structure
                     const createItemStructure = () => ({
@@ -329,14 +257,11 @@ function groupActivities(events) {
                             targetProject.items[itemId] = createItemStructure();
                         }
                         targetProject.items[itemId].item_events.push(cleanEventData(event, true));
-                        console.log('Added item event to project items');
                     }
                 } else {
-                    console.log('No target project found, adding to other_events');
                     groups.other_events.push(cleanEventData(event));
                 }
             } else {
-                console.log('No parent project ID, adding to other_events');
                 groups.other_events.push(cleanEventData(event));
             }
         } else if (event.object_type === 'comment') {
@@ -407,41 +332,27 @@ function groupActivities(events) {
     });
 
     // After all items are grouped, add health indicators
-    console.log('\n=== Adding health indicators ===');
-    console.log('Number of projects:', Object.keys(groups.projects).length);
-    
     Object.values(groups.projects).forEach(project => {
-        console.log('\nProcessing project items:', Object.keys(project.items).length);
         // Add health indicators to direct items
         Object.keys(project.items).forEach(itemId => {
-            console.log('Adding health indicators to item:', itemId);
             project.items[itemId] = addHealthIndicators(project.items[itemId]);
         });
 
-        console.log('\nProcessing project sections:', Object.keys(project.sections).length);
         // Add health indicators to items in sections
         Object.values(project.sections).forEach(section => {
-            console.log('Processing section items:', Object.keys(section.items).length);
             Object.keys(section.items).forEach(itemId => {
-                console.log('Adding health indicators to section item:', itemId);
                 section.items[itemId] = addHealthIndicators(section.items[itemId]);
             });
         });
 
-        console.log('\nProcessing child projects:', Object.keys(project.child_projects).length);
         // Add health indicators to items in child projects
         Object.values(project.child_projects).forEach(childProject => {
-            console.log('Processing child project items:', Object.keys(childProject.items).length);
             Object.keys(childProject.items).forEach(itemId => {
-                console.log('Adding health indicators to child project item:', itemId);
                 childProject.items[itemId] = addHealthIndicators(childProject.items[itemId]);
             });
             
-            console.log('Processing child project sections:', Object.keys(childProject.sections).length);
             Object.values(childProject.sections).forEach(section => {
-                console.log('Processing child project section items:', Object.keys(section.items).length);
                 Object.keys(section.items).forEach(itemId => {
-                    console.log('Adding health indicators to child project section item:', itemId);
                     section.items[itemId] = addHealthIndicators(section.items[itemId]);
                 });
             });
@@ -452,8 +363,6 @@ function groupActivities(events) {
 }
 
 function addHealthIndicatorsToJson(structure) {
-    console.log('\nAdding health indicators to structure');
-
     // Process each project's items
     Object.values(structure.projects).forEach(project => {
         // Process direct items
@@ -511,7 +420,6 @@ async function getActivity(api, options = {}) {
     let offset = 0;
     let hasMore = true;
 
-    console.log('\nFetching project events...');
     while (hasMore) {
         // Build query parameters for project events
         const projectQueryParams = new URLSearchParams();
@@ -534,8 +442,6 @@ async function getActivity(api, options = {}) {
         }
 
         projectEvents.push(...result.events);
-        console.log(`Fetched ${result.events.length} project events (offset: ${offset})`);
-        
         hasMore = result.events.length === 50;
         offset += result.events.length;
     }
@@ -545,7 +451,6 @@ async function getActivity(api, options = {}) {
     offset = 0;
     hasMore = true;
 
-    console.log('\nFetching requested events...');
     while (hasMore) {
         // Build query parameters
         const queryParams = new URLSearchParams();
@@ -577,7 +482,6 @@ async function getActivity(api, options = {}) {
         }
 
         events.push(...result.events);
-        console.log(`Fetched ${result.events.length} events (offset: ${offset})`);
         
         // If we got less than the limit or hit our requested limit, stop
         hasMore = result.events.length === 50 && (!options.limit || events.length < options.limit);
