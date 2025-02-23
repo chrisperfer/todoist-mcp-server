@@ -473,6 +473,113 @@ async function batchUpdateTask(api, taskIds, options) {
     }
 }
 
+async function batchAddTasks(api, contents, options = {}) {
+    let projectId = null;
+    let sectionId = null;
+    let parentId = null;
+
+    // First resolve section if specified, as we might need its project ID
+    if (options.sectionId) {
+        try {
+            sectionId = await resolveSectionId(api, options.sectionId);
+            // Get the section's project ID
+            const sections = await api.getSections();
+            const section = sections.find(s => s.id === sectionId);
+            if (section) {
+                projectId = section.projectId;
+            }
+        } catch (error) {
+            console.error(`Error: Section "${options.sectionId}" not found`);
+            process.exit(1);
+        }
+    }
+
+    // If projectId wasn't set from section and was provided explicitly
+    if (!projectId && options.projectId) {
+        try {
+            projectId = await resolveProjectId(api, options.projectId);
+        } catch (error) {
+            console.error(`Error: Project "${options.projectId}" not found`);
+            process.exit(1);
+        }
+    }
+
+    if (options.parentId) {
+        try {
+            parentId = await resolveTaskId(api, options.parentId);
+            // If we don't have a project ID yet, get it from the parent task
+            if (!projectId) {
+                const parentTask = (await api.getTasks()).find(t => t.id === parentId);
+                if (parentTask) {
+                    projectId = parentTask.projectId;
+                }
+            }
+        } catch (error) {
+            console.error(`Error: Parent task "${options.parentId}" not found`);
+            process.exit(1);
+        }
+    }
+
+    // Create commands for all tasks
+    const commands = contents.map(content => ({
+        type: 'item_add',
+        uuid: randomUUID(),
+        temp_id: randomUUID(),
+        args: {
+            content,
+            ...(projectId && { project_id: projectId }),
+            ...(sectionId && { section_id: sectionId }),
+            ...(parentId && { parent_id: parentId }),
+            ...(options.priority && { priority: parseInt(options.priority) }),
+            ...(options.dueString && { due_string: options.dueString }),
+            ...(options.dueDate && { due_date: options.dueDate }),
+            ...(options.labels && { labels: options.labels })
+        }
+    }));
+
+    // Execute all commands in a single batch
+    await executeSyncCommands(process.env.TODOIST_API_TOKEN, commands);
+
+    // Get all tasks to find the newly created ones
+    const tasks = await api.getTasks();
+    const newTasks = tasks.filter(t => 
+        contents.includes(t.content) && 
+        (!projectId || t.projectId === projectId.toString()) &&
+        (!sectionId || t.sectionId === sectionId.toString()) &&
+        (!parentId || t.parentId === parentId.toString())
+    );
+
+    // Get project path for output
+    const projectPath = projectId ? await getProjectPath(api, projectId) : 'Inbox';
+
+    if (options.json) {
+        console.log(formatJsonOutput(newTasks, 'created', {
+            location: {
+                project: projectPath,
+                section: sectionId ? (await api.getSections()).find(s => s.id === sectionId)?.name : null,
+                parent: parentId ? tasks.find(t => t.id === parentId)?.content : null
+            }
+        }));
+    } else {
+        for (const task of newTasks) {
+            console.log(`Task created: ${task.content}`);
+            console.log(`Project: ${projectPath}`);
+            if (sectionId) {
+                const sections = await api.getSections();
+                const section = sections.find(s => s.id === sectionId);
+                console.log(`Section: ${section ? section.name : sectionId}`);
+            }
+            if (parentId) {
+                const parentTask = tasks.find(t => t.id === parentId);
+                console.log(`Parent: ${parentTask ? parentTask.content : parentId}`);
+            }
+            if (options.priority) console.log(`Priority: ${options.priority}`);
+            if (options.labels) console.log(`Labels: ${options.labels.join(', ')}`);
+            console.log('');
+        }
+    }
+}
+
 async function main() {
     const argv = yargs(hideBin(process.argv))
         .command('batch-move', 'Move multiple tasks by ID', (yargs) => {
@@ -681,18 +788,16 @@ async function main() {
         }
 
         case 'batch-add': {
-            for (const content of argv.tasks) {
-                await addTask(api, content, {
-                    projectId: argv.projectId,
-                    sectionId: argv.sectionId,
-                    parentId: argv.parentId,
-                    priority: argv.priority,
-                    dueString: argv.dueString,
-                    dueDate: argv.dueDate,
-                    labels: argv.labels,
-                    json: argv.json
-                });
-            }
+            await batchAddTasks(api, argv.tasks, {
+                projectId: argv.projectId,
+                sectionId: argv.sectionId,
+                parentId: argv.parentId,
+                priority: argv.priority,
+                dueString: argv.dueString,
+                dueDate: argv.dueDate,
+                labels: argv.labels,
+                json: argv.json
+            });
             break;
         }
     }
@@ -705,4 +810,4 @@ if (import.meta.url === url.pathToFileURL(process.argv[1]).href) {
     });
 }
 
-export { batchMoveTask, batchUpdateTask, addTask }; 
+export { batchMoveTask, batchUpdateTask, addTask, batchAddTasks }; 
