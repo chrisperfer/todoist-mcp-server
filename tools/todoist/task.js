@@ -600,8 +600,11 @@ async function main() {
         .example('$0 batch-add --tasks "Section Task 1" "Section Task 2" --sectionId "183758533"', 'Add tasks to section')
         .example('$0 batch-add --tasks "Subtask 1" "Subtask 2" --parentId "8903766822"', 'Add tasks as subtasks')
         .example('$0 batch-add --tasks "Full Task 1" "Full Task 2" --projectId "2349336695" --sectionId "183758533" --priority 1 --labels "work" "urgent"', 'Add tasks with all options')
-        // Integration example
-        .example('find.js "overdue" --ids | xargs $0 batch-move --taskIds --to-section-id "183758533"', 'Move overdue tasks')
+        // Integration examples with find.js using correct filter syntax
+        .example('find.js "p:FLOOBY & search:test" --ids | xargs $0 batch-move --taskIds --to-section-id "183758533"', 'Move tasks matching text in project')
+        .example('find.js "overdue & p:FLOOBY" --ids | xargs $0 batch-update --taskIds --priority 1', 'Update overdue tasks in project')
+        .example('find.js "search:important & @work" --ids | xargs $0 batch-move --taskIds --to-parent-id "8903766822"', 'Move tasks by text and label')
+        .example('find.js "p:FLOOBY & no date" --ids | xargs $0 batch-update --taskIds --due-string "today"', 'Update tasks without dates')
         .command('batch-move', 'Move multiple tasks by ID', (yargs) => {
             return yargs
                 .options({
@@ -609,22 +612,26 @@ async function main() {
                         description: 'Task IDs to move (space-separated, quoted)',
                         type: 'array',
                         string: true,
-                        demandOption: true
+                        demandOption: true,
+                        coerce: arg => Array.isArray(arg) ? arg.map(String) : [String(arg)]
                     },
                     'to-project-id': {
                         description: 'Target project ID to move tasks to',
                         type: 'string',
-                        conflicts: ['to-section-id', 'to-parent-id']
+                        conflicts: ['to-section-id', 'to-parent-id'],
+                        coerce: String
                     },
                     'to-section-id': {
                         description: 'Target section ID to move tasks to',
                         type: 'string',
-                        conflicts: ['to-project-id', 'to-parent-id']
+                        conflicts: ['to-project-id', 'to-parent-id'],
+                        coerce: String
                     },
                     'to-parent-id': {
                         description: 'Target parent task ID to move tasks under',
                         type: 'string',
-                        conflicts: ['to-project-id', 'to-section-id']
+                        conflicts: ['to-project-id', 'to-section-id'],
+                        coerce: String
                     },
                     json: {
                         description: 'Output in JSON format',
@@ -640,7 +647,8 @@ async function main() {
                         description: 'Task IDs to update (space-separated, quoted)',
                         type: 'array',
                         string: true,
-                        demandOption: true
+                        demandOption: true,
+                        coerce: arg => Array.isArray(arg) ? arg.map(String) : [String(arg)]
                     },
                     content: {
                         description: 'New task content',
@@ -701,15 +709,18 @@ async function main() {
                     },
                     projectId: {
                         description: 'Project ID to add tasks to',
-                        type: 'string'
+                        type: 'string',
+                        coerce: String
                     },
                     sectionId: {
                         description: 'Section ID to add tasks to',
-                        type: 'string'
+                        type: 'string',
+                        coerce: String
                     },
                     parentId: {
                         description: 'Parent task ID to add tasks under',
-                        type: 'string'
+                        type: 'string',
+                        coerce: String
                     },
                     priority: {
                         description: 'Priority (1-4)',

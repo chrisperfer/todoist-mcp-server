@@ -26,26 +26,41 @@ const HELP = {
   usage: 'find.js <filter> [--ids] [--json]',
   examples: [
     'find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label',
-    'find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1     # Set priority for overdue tasks',
-    'find.js "today | tomorrow"     # Find tasks due today or tomorrow',
-    'find.js "search: meeting"      # Find tasks containing "meeting"',
-    'find.js "@work & p:FLOOBY"     # Find work-labeled tasks in FLOOBY project',
-    'find.js "overdue" --ids | xargs task.js batch-update --taskIds --complete     # Complete all overdue tasks',
-    'find.js "p:FLOOBY & @test" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533     # Move matching tasks to section',
-    'find.js "no labels" --json > unlabeled-tasks.json     # Export tasks to JSON file'
+    'find.js "search:meeting"        # Find tasks containing "meeting"',
+    'find.js "p:FLOOBY & search:important"  # Find tasks in project containing text',
+    'find.js "today | tomorrow"      # Find tasks due today or tomorrow',
+    'find.js "@work & p:FLOOBY"      # Find work-labeled tasks in FLOOBY project',
+    'find.js "no date & p:FLOOBY"    # Find tasks without dates in project',
+    'find.js "overdue & @urgent"     # Find overdue tasks with urgent label',
+    'find.js "p:FLOOBY & no labels"  # Find tasks without labels in project'
   ],
   options: {
     '--ids': 'Output task IDs in format suitable for batch commands',
     '--json': 'Output in JSON format with enhanced task information'
   },
   notes: [
-    'For filter syntax, see: https://todoist.com/help/articles/205280588-search-and-filter',
-    'Default output shows task content, project path, section name, parent task, and labels',
-    'The --ids option outputs IDs in a format ready for batch commands',
-    'The --json option includes project paths and section names in the output',
-    'Cannot use both --ids and --json options together',
-    'Use --ids with batch commands for efficient bulk operations',
-    'Use --json for programmatic processing or data export'
+    'Filter Syntax Guide:',
+    '  - p:ProjectName    Search in project',
+    '  - search:text      Search for text in task names',
+    '  - @label          Search by label',
+    '  - no date         Tasks without dates',
+    '  - no labels       Tasks without labels',
+    '  - overdue         Overdue tasks',
+    '  - today           Due today',
+    '  - &               Combine filters (AND)',
+    '  - |               Combine filters (OR)',
+    '',
+    'Search Tips:',
+    '  - Always use search:text for text searches instead of raw text',
+    '  - Combine filters with & (AND) or | (OR)',
+    '  - Project names are case-sensitive and must match exactly',
+    '  - Use quotes around filters with spaces',
+    '',
+    'Output Options:',
+    '  - Default: Shows task content, project, section, parent, and labels',
+    '  - --ids: Outputs IDs ready for batch commands',
+    '  - --json: Includes project paths and section names',
+    '  - Cannot use both --ids and --json together'
   ]
 };
 
