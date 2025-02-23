@@ -17,7 +17,7 @@
     "todoist:task": "node tools/todoist/task.js",
     "todoist:project": "node tools/todoist/project.js",
     "todoist:workflow": "node tools/todoist/workflow-tool.js",
-    "todoist:auto-tag": "node tools/todoist/auto-tagger.js"
+    "todoist:activity": "node tools/todoist/activity.js"
   },
   "dependencies": {
     "@doist/todoist-api-typescript": "^3.0.3"
@@ -326,6 +326,39 @@
           ]
         }
       }
+    },
+    "activity": {
+      "description": "View and analyze Todoist activity with filtering and health indicators",
+      "options": {
+        "object-type": "Filter by object type (item, project, section, note)",
+        "object-id": "Filter by object ID",
+        "event-type": "Filter by event type (added, updated, completed, deleted, uncompleted, archived, unarchived)",
+        "projectId": "Filter to show only events for a specific project and optionally its contents",
+        "sectionId": "Filter to show only events for a specific section and optionally its tasks",
+        "taskId": "Filter to show only events for a specific task and optionally its subtasks",
+        "include-children": "Include events for child items (sub-tasks, section tasks, or project contents)",
+        "since": "Start date (YYYY-MM-DD), defaults to all time if omitted",
+        "until": "End date (YYYY-MM-DD), defaults to all time if omitted",
+        "limit": "Maximum number of activities to return",
+        "include-deleted": "Include deleted items in results",
+        "json": "Output in JSON format with health indicators"
+      },
+      "examples": [
+        "node tools/todoist/activity.js",
+        "node tools/todoist/activity.js --object-type item --event-type completed",
+        "node tools/todoist/activity.js --projectId \"2349336695\" --include-children",
+        "node tools/todoist/activity.js --since \"2024-01-01\" --json",
+        "node tools/todoist/activity.js --since \"2024-01-01\" --until \"2024-03-31\"",
+        "node tools/todoist/activity.js --until \"2024-03-31\""
+      ],
+      "notes": [
+        "Default behavior without since/until fetches all available activities",
+        "Health indicators in JSON output:",
+        "- idle_warning: No activity for >30 days",
+        "- idle_critical: No activity for >90 days",
+        "- procrastination_warning: Average postpone >7 days",
+        "- procrastination_critical: Average postpone >30 days"
+      ]
     }
   }
 } 

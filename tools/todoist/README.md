@@ -22,6 +22,7 @@ The tools have been consolidated into three main commands plus utilities:
 - `task` - Manage tasks (add, update, move, batch operations)
 - `project` - Manage projects (add, update, bulk operations)
 - `workflow` - Process sequential thoughts
+- `activity` - View and analyze Todoist activity
 
 ### List Command
 
@@ -386,6 +387,50 @@ Notes:
 - Section IDs are recommended over names for more reliable targeting
 - The order parameter determines section position (lower numbers appear first)
 - When moving tasks between sections, task metadata is preserved
+
+### Activity Command
+
+The command for viewing and analyzing Todoist activity:
+
+```bash
+node tools/todoist/activity.js [options]
+
+Options:
+  --object-type <type>    Filter by object type (item, project, section, note)
+  --object-id <id>        Filter by object ID
+  --event-type <type>     Filter by event type (added, updated, completed, deleted, uncompleted, archived, unarchived)
+  --projectId <id>        Filter to show only events for a specific project and optionally its contents
+  --sectionId <id>        Filter to show only events for a specific section and optionally its tasks
+  --taskId <id>          Filter to show only events for a specific task and optionally its subtasks
+  --include-children     Include events for child items (sub-tasks, section tasks, or project contents)
+  --since <date>         Start date (YYYY-MM-DD)
+  --until <date>         End date (YYYY-MM-DD)
+  --limit <n>            Maximum number of activities to return
+  --include-deleted      Include deleted items in results
+  --json                Output in JSON format with health indicators
+
+Examples:
+# View all activity
+node tools/todoist/activity.js
+
+# View completed tasks
+node tools/todoist/activity.js --object-type item --event-type completed
+
+# View project activity with children
+node tools/todoist/activity.js --projectId "2349336695" --include-children
+
+# View activity since date with health indicators
+node tools/todoist/activity.js --since "2024-01-01" --json
+
+Notes:
+- Health indicators in JSON output:
+  - idle_warning: No activity for >30 days
+  - idle_critical: No activity for >90 days
+  - procrastination_warning: Average postpone >7 days
+  - procrastination_critical: Average postpone >30 days
+- The --json option provides structured output with health analysis
+- Use --include-children to see events for all nested items
+- Can filter by project, section, or task (mutually exclusive)
 
 ### Utility Commands
 
