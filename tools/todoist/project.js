@@ -219,6 +219,19 @@ async function updateProject(api, projectQuery, options) {
 
 async function main() {
     const argv = yargs(hideBin(process.argv))
+        .usage('Usage: $0 <command> [options]')
+        // Add project examples
+        .example('$0 add --name "FLOOBY Project 📁" --color "blue" --favorite', 'Create a new project')
+        .example('$0 add --name "FLOOBY Sub-Project 📁" --parentId "2349336695" --view "board"', 'Create a sub-project')
+        .example('$0 add --name "Work Project 📊" --color "red" --view "list"', 'Create project with specific view')
+        // Bulk add examples
+        .example('$0 bulk-add --names "Project 1 📁" "Project 2 📁" --color "blue"', 'Create multiple projects')
+        .example('$0 bulk-add --names "Sprint 1 📊" "Sprint 2 📊" --parentId "2349336695" --view "board"', 'Create multiple sub-projects')
+        .example('$0 bulk-add --names "Q1 Goals 🎯" "Q2 Goals 🎯" --color "red" --favorite', 'Create multiple favorite projects')
+        // Update examples
+        .example('$0 update --project "2349336695" --name "Updated FLOOBY 📁" --color "green"', 'Update project name and color')
+        .example('$0 update --project "2349336695" --parentId "8903766822" --view "board"', 'Move project and change view')
+        .example('$0 update --project "2349336695" --favorite', 'Toggle project favorite status')
         .command('add', 'Add a new project', {
             name: {
                 description: 'Project name',
