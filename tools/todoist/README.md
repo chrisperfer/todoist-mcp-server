@@ -287,6 +287,106 @@ Example:
 node tools/todoist/project.js update --project "Old Name" --name "New Name 📁" --color "red"
 ```
 
+### Section Command
+
+The unified command for all section operations:
+
+```bash
+node tools/todoist/section.js <subcommand> [options]
+```
+
+#### Add Section
+```bash
+node tools/todoist/section.js add [options]
+
+Options:
+  --name "<text>"       Section name (required)
+  --projectId "<id>"    Project ID to add section to (required)
+  --order "<number>"    Section order (optional)
+  --json              Output in JSON format
+
+Examples:
+# Add section to project
+node tools/todoist/section.js add "Planning 📋" --projectId "2349336695"
+
+# Add section with specific order
+node tools/todoist/section.js add "Sprint Backlog 📥" --projectId "2349336695" --order 1
+```
+
+#### Bulk Add Sections
+```bash
+node tools/todoist/section.js bulk-add [options]
+
+Options:
+  --names "<names>"     Section names (space-separated, use quotes)
+  --projectId "<id>"    Project ID to add sections to (required)
+  --startOrder "<n>"    Starting order (will increment for each section)
+  --json              Output in JSON format
+
+Examples:
+# Add multiple sections
+node tools/todoist/section.js bulk-add --names "Sprint 1 🏃" "Sprint 2 🏃" --projectId "2349336695"
+
+# Add ordered sections
+node tools/todoist/section.js bulk-add --names "Todo 📋" "In Progress 🔄" "Done ✅" --projectId "2349336695" --start-order 1
+```
+
+#### Update Section
+```bash
+node tools/todoist/section.js update [options]
+
+Options:
+  --section "<id>"     Section ID to update (required)
+  --name "<text>"      New section name
+  --projectId "<id>"   Move to project ID
+  --order "<number>"   New section order
+  --json             Output in JSON format
+
+Examples:
+# Update section name and order
+node tools/todoist/section.js update --section "183758533" --name "Active Sprint 🏃" --order 1
+
+# Move section to different project
+node tools/todoist/section.js update --section "183758533" --projectId "2349336695"
+```
+
+#### Remove Section
+```bash
+node tools/todoist/section.js remove [options]
+
+Options:
+  --section "<id>"     Section ID to remove (required)
+  --force             Force removal even if section contains tasks
+  --json             Output in JSON format
+
+Examples:
+# Remove section and move tasks to project root
+node tools/todoist/section.js remove --section "183758533" --force
+```
+
+#### Bulk Remove Sections
+```bash
+node tools/todoist/section.js bulk-remove [options]
+
+Options:
+  --sections "<ids>"   Section IDs to remove (space-separated)
+  --force             Force removal even if sections contain tasks
+  --continueOnError   Continue if some sections are not found
+  --json             Output in JSON format
+
+Examples:
+# Remove multiple sections
+node tools/todoist/section.js bulk-remove --sections "183758533" "183758534" --force
+```
+
+Notes:
+- Section operations use the Sync API for better reliability
+- Tasks in deleted sections are preserved by moving them to the project root
+- Use --force to remove sections containing tasks
+- Section IDs are recommended over names for more reliable targeting
+- The order parameter determines section position (lower numbers appear first)
+- When moving tasks between sections, task metadata is preserved
+
 ### Utility Commands
 
 #### Workflow Tool

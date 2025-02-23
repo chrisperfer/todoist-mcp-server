@@ -15,13 +15,15 @@ import {
     searchSections,
     formatSectionList
 } from './lib/id-utils.js';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 async function addSection(api, name, options) {
     let projectId;
     try {
-        projectId = await resolveProjectId(api, options.project);
+        projectId = await resolveProjectId(api, options.projectId);
     } catch (error) {
-        console.error(`Error: Project "${options.project}" not found`);
+        console.error(`Error: Project "${options.projectId}" not found`);
         process.exit(1);
     }
 
@@ -60,9 +62,9 @@ async function addSection(api, name, options) {
 async function bulkAddSections(api, sections, options) {
     let projectId;
     try {
-        projectId = await resolveProjectId(api, options.project);
+        projectId = await resolveProjectId(api, options.projectId);
     } catch (error) {
-        console.error(`Error: Project "${options.project}" not found`);
+        console.error(`Error: Project "${options.projectId}" not found`);
         process.exit(1);
     }
 
@@ -123,11 +125,11 @@ async function updateSection(api, sectionQuery, options) {
     if (options.order !== undefined) updateData.order = parseInt(options.order);
 
     // If moving to a different project
-    if (options.project) {
+    if (options.projectId) {
         try {
-            updateData.project_id = await resolveProjectId(api, options.project);
+            updateData.project_id = await resolveProjectId(api, options.projectId);
         } catch (error) {
-            console.error(`Error: Project "${options.project}" not found`);
+            console.error(`Error: Project "${options.projectId}" not found`);
             process.exit(1);
         }
     }
@@ -411,231 +413,183 @@ async function bulkRemoveSections(api, sectionQueries, options) {
     }
 }
 
-function parseAddOptions(args) {
-    const options = {
-        json: args.includes('--json'),
-        project: null,
-        order: undefined
-    };
-
-    // Get section name (everything before the first -- flag or all args if no flags)
-    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-    const name = firstFlagIndex === -1 
-        ? args.join(' ')
-        : args.slice(0, firstFlagIndex).join(' ');
-
-    if (!name) {
-        console.error("Error: Section name is required");
-        process.exit(1);
-    }
-
-    // Parse other options
-    let i = firstFlagIndex;
-    while (i !== -1 && i < args.length) {
-        switch (args[i]) {
-            case '--project':
-                if (i + 1 < args.length) options.project = args[++i];
-                break;
-            case '--order':
-                if (i + 1 < args.length) options.order = parseInt(args[++i], 10);
-                break;
-        }
-        i++;
-    }
-
-    if (!options.project) {
-        console.error("Error: Project is required (use --project)");
-        process.exit(1);
-    }
-
-    return { name, options };
-}
-
-function parseBulkAddOptions(args) {
-    const options = {
-        json: args.includes('--json'),
-        project: null,
-        startOrder: undefined
-    };
-
-    // First argument should be a newline-separated list of sections
-    if (args.length === 0) {
-        console.error("Error: Section list is required for bulk-add");
-        process.exit(1);
-    }
-
-    // Split by literal \n or actual newlines and clean up
-    const sections = args[0]
-        .split(/\\n|\n/)
-        .map(t => t.trim())
-        .filter(t => t);
-    args = args.slice(1);
-
-    let i = 0;
-    while (i < args.length) {
-        switch (args[i]) {
-            case '--project':
-                if (i + 1 < args.length) options.project = args[++i];
-                break;
-            case '--start-order':
-                if (i + 1 < args.length) options.startOrder = parseInt(args[++i], 10);
-                break;
-        }
-        i++;
-    }
-
-    if (!options.project) {
-        console.error("Error: Project is required (use --project)");
-        process.exit(1);
-    }
-
-    return { sections, options };
-}
-
-function parseUpdateOptions(args) {
-    const options = {
-        json: args.includes('--json'),
-        name: null,
-        project: null,
-        order: undefined
-    };
-
-    // Get section query (everything before the first -- flag or all args if no flags)
-    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-    const sectionQuery = firstFlagIndex === -1 
-        ? args.join(' ')
-        : args.slice(0, firstFlagIndex).join(' ');
-
-    if (!sectionQuery) {
-        console.error("Error: Section ID or name is required");
-        process.exit(1);
-    }
-
-    // Parse other options
-    let i = firstFlagIndex;
-    while (i !== -1 && i < args.length) {
-        switch (args[i]) {
-            case '--name':
-                if (i + 1 < args.length) options.name = args[++i];
-                break;
-            case '--project':
-                if (i + 1 < args.length) options.project = args[++i];
-                break;
-            case '--order':
-                if (i + 1 < args.length) options.order = parseInt(args[++i], 10);
-                break;
-        }
-        i++;
-    }
-
-    if (!options.name && !options.project && options.order === undefined) {
-        console.error("Error: At least one update option is required (--name, --project, or --order)");
-        process.exit(1);
-    }
-
-    return { sectionQuery, options };
-}
-
-function parseRemoveOptions(args) {
-    const options = {
-        json: args.includes('--json'),
-        force: args.includes('--force')
-    };
-
-    // Get section query (everything before the first -- flag or all args if no flags)
-    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-    const sectionQuery = firstFlagIndex === -1 
-        ? args.join(' ')
-        : args.slice(0, firstFlagIndex).join(' ');
-
-    if (!sectionQuery) {
-        console.error("Error: Section ID or name is required");
-        process.exit(1);
-    }
-
-    return { sectionQuery, options };
-}
-
-function parseBulkRemoveOptions(args) {
-    const options = {
-        json: args.includes('--json'),
-        force: args.includes('--force'),
-        continueOnError: args.includes('--continue-on-error')
-    };
-
-    // Get section queries (everything before the first -- flag or all args if no flags)
-    const firstFlagIndex = args.findIndex(arg => arg.startsWith('--'));
-    let sectionList;
-    
-    if (firstFlagIndex === -1) {
-        sectionList = args.join(' ');
-    } else {
-        // Join with spaces and then split by commas to handle quoted strings with spaces
-        sectionList = args.slice(0, firstFlagIndex).join(' ');
-    }
-
-    if (!sectionList) {
-        console.error("Error: Section list is required (comma-separated IDs or names)");
-        process.exit(1);
-    }
-
-    // Split by commas, but preserve spaces around emojis
-    const sectionQueries = sectionList
-        .split(/\s*,\s*/)
-        .map(s => s.trim())
-        .filter(s => s);
-
-    if (sectionQueries.length === 0) {
-        console.error("Error: No valid sections specified");
-        process.exit(1);
-    }
-
-    return { sectionQueries, options };
-}
-
 async function main() {
     try {
-        const args = process.argv.slice(2);
-        
-        if (args.length === 0) {
-            console.error("Error: Subcommand required (add, bulk-add, update, remove, or bulk-remove)");
-            process.exit(1);
-        }
-        
-        const subcommand = args[0];
-        const subcommandArgs = args.slice(1);
-        
+        const argv = yargs(hideBin(process.argv))
+            .usage('Usage: $0 <command> [options]')
+            // Add section examples
+            .example('$0 add "Planning 📋" --projectId "2349336695"', 'Add section to project')
+            .example('$0 add "Sprint Backlog 📥" --projectId "2349336695" --order 1', 'Add section with specific order')
+            // Bulk add examples
+            .example('$0 bulk-add --names "Sprint 1 🏃" "Sprint 2 🏃" --projectId "2349336695"', 'Add multiple sections')
+            .example('$0 bulk-add --names "Todo 📋" "In Progress 🔄" "Done ✅" --projectId "2349336695" --start-order 1', 'Add ordered sections')
+            // Update examples
+            .example('$0 update "183758533" --name "Active Sprint 🏃" --order 1', 'Update section name and order')
+            .example('$0 update "183758533" --projectId "2349336695"', 'Move section to different project')
+            // Remove examples
+            .example('$0 remove --section "183758533" --force', 'Remove section and move tasks to project root')
+            .example('$0 bulk-remove --sections "183758533" "183758534" --force', 'Remove multiple sections')
+            .command('add', 'Add a new section', {
+                name: {
+                    description: 'Section name',
+                    type: 'string',
+                    demandOption: true
+                },
+                projectId: {
+                    description: 'Project ID to add section to',
+                    type: 'string',
+                    demandOption: true,
+                    coerce: String
+                },
+                order: {
+                    description: 'Section order (optional)',
+                    type: 'number'
+                },
+                json: {
+                    description: 'Output in JSON format',
+                    type: 'boolean',
+                    default: false
+                }
+            })
+            .command('bulk-add', 'Add multiple sections', {
+                names: {
+                    description: 'Section names (space-separated, use quotes for multi-word names)',
+                    type: 'array',
+                    string: true,
+                    demandOption: true
+                },
+                projectId: {
+                    description: 'Project ID to add sections to',
+                    type: 'string',
+                    demandOption: true,
+                    coerce: String
+                },
+                startOrder: {
+                    description: 'Starting order for sections (will increment for each section)',
+                    type: 'number'
+                },
+                json: {
+                    description: 'Output in JSON format',
+                    type: 'boolean',
+                    default: false
+                }
+            })
+            .command('update', 'Update a section', {
+                section: {
+                    description: 'Section ID to update',
+                    type: 'string',
+                    demandOption: true
+                },
+                name: {
+                    description: 'New section name',
+                    type: 'string'
+                },
+                projectId: {
+                    description: 'Move section to project ID',
+                    type: 'string',
+                    coerce: String
+                },
+                order: {
+                    description: 'New section order',
+                    type: 'number'
+                },
+                json: {
+                    description: 'Output in JSON format',
+                    type: 'boolean',
+                    default: false
+                }
+            })
+            .command('remove', 'Remove a section', {
+                section: {
+                    description: 'Section ID to remove',
+                    type: 'string',
+                    demandOption: true
+                },
+                force: {
+                    description: 'Force removal even if section contains tasks',
+                    type: 'boolean',
+                    default: false
+                },
+                json: {
+                    description: 'Output in JSON format',
+                    type: 'boolean',
+                    default: false
+                }
+            })
+            .command('bulk-remove', 'Remove multiple sections', {
+                sections: {
+                    description: 'Section IDs to remove (space-separated)',
+                    type: 'array',
+                    string: true,
+                    demandOption: true
+                },
+                force: {
+                    description: 'Force removal even if sections contain tasks',
+                    type: 'boolean',
+                    default: false
+                },
+                continueOnError: {
+                    description: 'Continue if some sections are not found',
+                    type: 'boolean',
+                    default: false
+                },
+                json: {
+                    description: 'Output in JSON format',
+                    type: 'boolean',
+                    default: false
+                }
+            })
+            .epilogue(
+                'Notes:\n' +
+                '  - Section operations use the Sync API for better reliability\n' +
+                '  - Tasks in deleted sections are preserved by moving them to the project root\n' +
+                '  - Use --force to remove sections containing tasks\n' +
+                '  - Section IDs are recommended over names for more reliable targeting\n' +
+                '  - The order parameter determines section position (lower numbers appear first)\n' +
+                '  - When moving tasks between sections, task metadata is preserved'
+            )
+            .demandCommand(1, 'You must provide a valid command')
+            .help()
+            .argv;
+
         const api = await initializeApi();
-        
-        switch (subcommand) {
-            case 'add': {
-                const { name, options } = parseAddOptions(subcommandArgs);
-                await addSection(api, name, options);
+
+        switch (argv._[0]) {
+            case 'add':
+                await addSection(api, argv.name, {
+                    projectId: argv.projectId,
+                    order: argv.order,
+                    json: argv.json
+                });
                 break;
-            }
-            case 'bulk-add': {
-                const { sections, options } = parseBulkAddOptions(subcommandArgs);
-                await bulkAddSections(api, sections, options);
+            case 'bulk-add':
+                await bulkAddSections(api, argv.names, {
+                    projectId: argv.projectId,
+                    startOrder: argv.startOrder,
+                    json: argv.json
+                });
                 break;
-            }
-            case 'update': {
-                const { sectionQuery, options } = parseUpdateOptions(subcommandArgs);
-                await updateSection(api, sectionQuery, options);
+            case 'update':
+                await updateSection(api, argv.section, {
+                    name: argv.name,
+                    projectId: argv.projectId,
+                    order: argv.order,
+                    json: argv.json
+                });
                 break;
-            }
-            case 'remove': {
-                const { sectionQuery, options } = parseRemoveOptions(subcommandArgs);
-                await removeSection(api, sectionQuery, options);
+            case 'remove':
+                await removeSection(api, argv.section, {
+                    force: argv.force,
+                    json: argv.json
+                });
                 break;
-            }
-            case 'bulk-remove': {
-                const { sectionQueries, options } = parseBulkRemoveOptions(subcommandArgs);
-                await bulkRemoveSections(api, sectionQueries, options);
+            case 'bulk-remove':
+                await bulkRemoveSections(api, argv.sections, {
+                    force: argv.force,
+                    continueOnError: argv.continueOnError,
+                    json: argv.json
+                });
                 break;
-            }
-            default:
-                console.error(`Error: Unknown subcommand "${subcommand}"`);
-                process.exit(1);
         }
     } catch (error) {
         console.error("Error:", error.message);

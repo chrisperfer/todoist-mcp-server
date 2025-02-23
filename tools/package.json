@@ -216,6 +216,74 @@
         "node tools/todoist/auto-tagger.js --project \"Learn\"",
         "node tools/todoist/auto-tagger.js --dry-run"
       ]
+    },
+    "section": {
+      "description": "Manage sections (add, update, move, batch operations)",
+      "subcommands": {
+        "add": {
+          "description": "Add a new section",
+          "options": [
+            "--name \"<text>\"       Section name (required)",
+            "--projectId \"<id>\"    Project ID to add section to (required)",
+            "--order \"<number>\"    Section order (optional)",
+            "--json              Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/section.js add \"Planning 📋\" --projectId \"2349336695\"",
+            "node tools/todoist/section.js add \"Sprint Backlog 📥\" --projectId \"2349336695\" --order 1"
+          ]
+        },
+        "bulk-add": {
+          "description": "Add multiple sections",
+          "options": [
+            "--names \"<names>\"     Section names (space-separated, use quotes)",
+            "--projectId \"<id>\"    Project ID to add sections to (required)",
+            "--startOrder \"<n>\"    Starting order (will increment for each section)",
+            "--json              Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/section.js bulk-add --names \"Sprint 1 🏃\" \"Sprint 2 🏃\" --projectId \"2349336695\"",
+            "node tools/todoist/section.js bulk-add --names \"Todo 📋\" \"In Progress 🔄\" \"Done ✅\" --projectId \"2349336695\" --start-order 1"
+          ]
+        },
+        "update": {
+          "description": "Update section properties",
+          "options": [
+            "--section \"<id>\"     Section ID to update (required)",
+            "--name \"<text>\"      New section name",
+            "--projectId \"<id>\"   Move to project ID",
+            "--order \"<number>\"   New section order",
+            "--json             Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/section.js update --section \"183758533\" --name \"Active Sprint 🏃\" --order 1",
+            "node tools/todoist/section.js update --section \"183758533\" --projectId \"2349336695\""
+          ]
+        },
+        "remove": {
+          "description": "Remove a section",
+          "options": [
+            "--section \"<id>\"     Section ID to remove (required)",
+            "--force             Force removal even if section contains tasks",
+            "--json             Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/section.js remove --section \"183758533\" --force"
+          ]
+        },
+        "bulk-remove": {
+          "description": "Remove multiple sections",
+          "options": [
+            "--sections \"<ids>\"   Section IDs to remove (space-separated)",
+            "--force             Force removal even if sections contain tasks",
+            "--continueOnError   Continue if some sections are not found",
+            "--json             Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/section.js bulk-remove --sections \"183758533\" \"183758534\" --force"
+          ]
+        }
+      }
     }
   }
 } 
