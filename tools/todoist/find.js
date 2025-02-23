@@ -5,8 +5,11 @@ import { initializeApi, getProjectPath } from './lib/task-utils.js';
 
 const filter = process.argv[2];
 if (!filter) {
-  console.error('Usage: find.js <filter>');
-  console.error('Example: find.js "p:FLOOBY & @test"');
+  console.error('Usage: find.js <filter> [--ids] [--json]');
+  console.error('Examples:');
+  console.error('  find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label');
+  console.error('  find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1');
+  console.error('  find.js "p:FLOOBY & @test" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533');
   process.exit(1);
 }
 
@@ -17,6 +20,34 @@ if (ids && json) {
   console.error('Error: Cannot use both --ids and --json options');
   process.exit(1);
 }
+
+const HELP = {
+  description: 'Find tasks using Todoist filters',
+  usage: 'find.js <filter> [--ids] [--json]',
+  examples: [
+    'find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label',
+    'find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1     # Set priority for overdue tasks',
+    'find.js "today | tomorrow"     # Find tasks due today or tomorrow',
+    'find.js "search: meeting"      # Find tasks containing "meeting"',
+    'find.js "@work & p:FLOOBY"     # Find work-labeled tasks in FLOOBY project',
+    'find.js "overdue" --ids | xargs task.js batch-update --taskIds --complete     # Complete all overdue tasks',
+    'find.js "p:FLOOBY & @test" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533     # Move matching tasks to section',
+    'find.js "no labels" --json > unlabeled-tasks.json     # Export tasks to JSON file'
+  ],
+  options: {
+    '--ids': 'Output task IDs in format suitable for batch commands',
+    '--json': 'Output in JSON format with enhanced task information'
+  },
+  notes: [
+    'For filter syntax, see: https://todoist.com/help/articles/205280588-search-and-filter',
+    'Default output shows task content, project path, section name, parent task, and labels',
+    'The --ids option outputs IDs in a format ready for batch commands',
+    'The --json option includes project paths and section names in the output',
+    'Cannot use both --ids and --json options together',
+    'Use --ids with batch commands for efficient bulk operations',
+    'Use --json for programmatic processing or data export'
+  ]
+};
 
 async function main() {
   try {

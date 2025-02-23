@@ -130,34 +130,65 @@
             "--json                Output in JSON format"
           ]
         },
+        "batch-move": {
+          "description": "Move multiple tasks by ID",
+          "options": [
+            "--taskIds \"<ids>\"       Task IDs to move (comma-separated or from find.js)",
+            "--to-project-id \"<id>\"  Move to project",
+            "--to-section-id \"<id>\"  Move to section",
+            "--to-parent-id \"<id>\"   Move as subtask of parent",
+            "--json                  Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/task.js batch-move --taskIds 123,456 --to-section-id 789",
+            "node tools/todoist/find.js \"p:FLOOBY & search:Batch\" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-section-id 789",
+            "node tools/todoist/find.js \"overdue\" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-project-id 123"
+          ]
+        },
+        "batch-update": {
+          "description": "Update multiple tasks by ID",
+          "options": [
+            "--taskIds \"<ids>\"       Task IDs to update (comma-separated or from find.js)",
+            "--content \"<text>\"      New content",
+            "--description \"<text>\"  New description",
+            "--priority \"<1-4>\"      New priority",
+            "--due-string \"<text>\"   New due date as text",
+            "--due-date \"<date>\"     New due date (YYYY-MM-DD)",
+            "--labels \"<labels>\"     Set labels (comma-separated)",
+            "--add-labels \"<labels>\" Add to existing labels",
+            "--remove-labels \"<l>\"   Remove from existing labels",
+            "--complete             Mark as complete",
+            "--json                Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/task.js batch-update --taskIds 123,456 --priority 1",
+            "node tools/todoist/find.js \"overdue\" --ids | xargs node tools/todoist/task.js batch-update --taskIds --priority 1",
+            "node tools/todoist/find.js \"p:FLOOBY & search:Batch\" --ids | xargs node tools/todoist/task.js batch-update --taskIds --labels \"work,urgent\""
+          ]
+        },
         "batch-add": {
           "description": "Add multiple tasks at once",
           "options": [
-            "--tasks \"<tasks>\"      Task contents (space-separated, use quotes for multi-word tasks)",
-            "--project \"<id/name>\"  Project to add tasks to",
-            "--section \"<id/name>\"  Section to add tasks to",
-            "--parent \"<id>\"        Parent task ID for subtasks",
-            "--priority \"<1-4>\"     Task priority",
-            "--due-string \"<text>\"  Due date as text",
-            "--due-date \"<date>\"    Due date (YYYY-MM-DD)",
-            "--labels \"<labels>\"    Comma-separated list of labels",
-            "--json                Output in JSON format"
+            "--tasks \"<tasks>\"       Task contents (space-separated, use quotes for multi-word tasks)",
+            "--projectId \"<id>\"      Project to add tasks to",
+            "--sectionId \"<id>\"      Section to add tasks to",
+            "--parentId \"<id>\"       Parent task ID for subtasks",
+            "--priority \"<1-4>\"      Task priority",
+            "--due-string \"<text>\"   Due date as text",
+            "--due-date \"<date>\"     Due date (YYYY-MM-DD)",
+            "--labels \"<labels>\"     Comma-separated list of labels",
+            "--json                 Output in JSON format"
+          ],
+          "examples": [
+            "node tools/todoist/task.js batch-add --tasks \"Task 1\" \"Task 2\" --projectId 123 --priority 3",
+            "node tools/todoist/task.js batch-add --tasks \"Section Task 1\" \"Section Task 2\" --sectionId 789 --labels \"work\"",
+            "node tools/todoist/task.js batch-add --tasks \"Subtask 1\" \"Subtask 2\" --parentId 456 --due-string \"tomorrow\""
           ]
         },
         "move": {
           "description": "Move a task to a different location",
           "options": [
             "--task \"<id/content>\"  Task to move (required)",
-            "--to-project \"<id>\"    Move to project",
-            "--to-section \"<id>\"    Move to section",
-            "--to-parent \"<id>\"     Move as subtask of parent",
-            "--json                Output in JSON format"
-          ]
-        },
-        "batch-move": {
-          "description": "Move multiple tasks matching a filter",
-          "options": [
-            "--filter \"<query>\"     Tasks to move (required)",
             "--to-project \"<id>\"    Move to project",
             "--to-section \"<id>\"    Move to section",
             "--to-parent \"<id>\"     Move as subtask of parent",
@@ -220,6 +251,33 @@
           ]
         }
       }
+    },
+    "find": {
+      "description": "Find tasks using Todoist filters",
+      "usage": "find.js <filter> [--ids] [--json]",
+      "options": [
+        "--ids                Output task IDs in format suitable for batch commands",
+        "--json              Output in JSON format with enhanced task information"
+      ],
+      "examples": [
+        "node tools/todoist/find.js \"p:FLOOBY & @test\"     # Find tasks in FLOOBY project with @test label",
+        "node tools/todoist/find.js \"overdue\" --ids | xargs node tools/todoist/task.js batch-update --taskIds --priority 1",
+        "node tools/todoist/find.js \"today | tomorrow\"     # Find tasks due today or tomorrow",
+        "node tools/todoist/find.js \"search: meeting\"      # Find tasks containing \"meeting\"",
+        "node tools/todoist/find.js \"@work & p:FLOOBY\"     # Find work-labeled tasks in FLOOBY project",
+        "node tools/todoist/find.js \"overdue\" --ids | xargs node tools/todoist/task.js batch-update --taskIds --complete",
+        "node tools/todoist/find.js \"p:FLOOBY & @test\" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-section-id 789",
+        "node tools/todoist/find.js \"no labels\" --json > unlabeled-tasks.json     # Export tasks to JSON file"
+      ],
+      "notes": [
+        "For filter syntax, see: https://todoist.com/help/articles/205280588-search-and-filter",
+        "Default output shows task content, project path, section name, parent task, and labels",
+        "The --ids option outputs IDs in a format ready for batch commands",
+        "The --json option includes project paths and section names in the output",
+        "Cannot use both --ids and --json options together",
+        "Use --ids with batch commands for efficient bulk operations",
+        "Use --json for programmatic processing or data export"
+      ]
     }
   }
 }

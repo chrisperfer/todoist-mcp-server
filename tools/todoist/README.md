@@ -104,56 +104,32 @@ The unified command for all task operations:
 node tools/todoist/task.js <subcommand> [options]
 ```
 
-#### Add Task
+#### Find Tasks
 ```bash
-node tools/todoist/task.js add [options]
+node tools/todoist/find.js <filter> [options]
 
 Options:
-  --content "<text>"      Task content (required)
-  --project "<id/name>"   Project to add task to
-  --section "<id/name>"   Section to add task to
-  --parent "<id>"         Parent task ID for subtask
-  --priority "<1-4>"      Task priority
-  --due-string "<text>"   Due date as text (e.g., "tomorrow")
-  --due-date "<date>"     Due date (YYYY-MM-DD)
-  --labels "<labels>"     Comma-separated list of labels
-  --json                 Output in JSON format
+  --ids                Output task IDs in format suitable for batch commands
+  --json              Output in JSON format with enhanced task information
 
 Examples:
-# Add task to project
-node tools/todoist/task.js add --content "New task" --project "FLOOBY 🐒"
+# Basic task finding
+node tools/todoist/find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label
+node tools/todoist/find.js "today | tomorrow"      # Find tasks due today or tomorrow
+node tools/todoist/find.js "search: meeting"       # Find tasks containing "meeting"
+node tools/todoist/find.js "@work & p:FLOOBY"     # Find work-labeled tasks in FLOOBY project
 
-# Add task with details
-node tools/todoist/task.js add --content "Important task" --priority 1 --due-string "tomorrow" --labels "urgent,work"
-```
+# Integration with batch commands
+node tools/todoist/find.js "overdue" --ids | xargs node tools/todoist/task.js batch-update --taskIds --priority 1
+node tools/todoist/find.js "p:FLOOBY & @test" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-section-id 789
+node tools/todoist/find.js "no labels" --json > unlabeled-tasks.json     # Export tasks to JSON file
 
-#### Batch Add Tasks
-```bash
-node tools/todoist/task.js batch-add [options]
-
-Options:
-  --tasks "<tasks>"       Task contents (space-separated, use quotes)
-  --project "<id/name>"   Project to add tasks to
-  --section "<id/name>"   Section to add tasks to
-  [Same options as single add]
-
-Example:
-node tools/todoist/task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --project "FLOOBY 🐒"
-```
-
-#### Move Task
-```bash
-node tools/todoist/task.js move [options]
-
-Options:
-  --task "<id/content>"   Task to move (required)
-  --to-project "<id>"     Move to project
-  --to-section "<id>"     Move to section
-  --to-parent "<id>"      Move as subtask of parent
-  --json                 Output in JSON format
-
-Example:
-node tools/todoist/task.js move --task 123456789 --to-project 987654321
+Notes:
+- For filter syntax, see: https://todoist.com/help/articles/205280588-search-and-filter
+- Default output shows task content, project path, section name, parent task, and labels
+- The --ids option outputs IDs in a format ready for batch commands
+- The --json option includes project paths and section names in the output
+- Cannot use both --ids and --json options together
 ```
 
 #### Batch Move Tasks
@@ -161,22 +137,27 @@ node tools/todoist/task.js move --task 123456789 --to-project 987654321
 node tools/todoist/task.js batch-move [options]
 
 Options:
-  --filter "<query>"      Tasks to move (required)
-  --to-project "<id>"     Move to project
-  --to-section "<id>"     Move to section
-  --to-parent "<id>"      Move as subtask of parent
-  --json                 Output in JSON format
+  --taskIds "<ids>"       Task IDs to move (comma-separated or from find.js)
+  --to-project-id "<id>"  Move to project
+  --to-section-id "<id>"  Move to section
+  --to-parent-id "<id>"   Move as subtask of parent
+  --json                Output in JSON format
 
-Example:
-node tools/todoist/task.js batch-move --filter "#FLOOBY 🐒" --to-section 172860480
+Examples:
+# Move tasks directly by ID
+node tools/todoist/task.js batch-move --taskIds 123,456 --to-section-id 789
+
+# Move tasks using find.js
+node tools/todoist/find.js "p:FLOOBY & search:Batch" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-section-id 789
+node tools/todoist/find.js "overdue" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-project-id 123
 ```
 
-#### Update Task
+#### Batch Update Tasks
 ```bash
-node tools/todoist/task.js update [options]
+node tools/todoist/task.js batch-update [options]
 
 Options:
-  --task "<id/content>"   Task to update (required)
+  --taskIds "<ids>"       Task IDs to update (comma-separated or from find.js)
   --content "<text>"      New content
   --description "<text>"  New description
   --priority "<1-4>"      New priority
@@ -188,8 +169,34 @@ Options:
   --complete             Mark as complete
   --json                Output in JSON format
 
-Example:
-node tools/todoist/task.js update --task 123456789 --priority 1 --due-string "tomorrow"
+Examples:
+# Update tasks directly by ID
+node tools/todoist/task.js batch-update --taskIds 123,456 --priority 1
+
+# Update tasks using find.js
+node tools/todoist/find.js "overdue" --ids | xargs node tools/todoist/task.js batch-update --taskIds --priority 1
+node tools/todoist/find.js "p:FLOOBY & search:Batch" --ids | xargs node tools/todoist/task.js batch-update --taskIds --labels "work,urgent"
+```
+
+#### Batch Add Tasks
+```bash
+node tools/todoist/task.js batch-add [options]
+
+Options:
+  --tasks "<tasks>"       Task contents (space-separated, use quotes)
+  --projectId "<id>"      Project to add tasks to
+  --sectionId "<id>"      Section to add tasks to
+  --parentId "<id>"       Parent task ID for subtasks
+  --priority "<1-4>"      Task priority
+  --due-string "<text>"   Due date as text
+  --due-date "<date>"     Due date (YYYY-MM-DD)
+  --labels "<labels>"     Comma-separated list of labels
+  --json                Output in JSON format
+
+Examples:
+node tools/todoist/task.js batch-add --tasks "Task 1" "Task 2" "Task 3" --projectId 123 --priority 3
+node tools/todoist/task.js batch-add --tasks "Section Task 1" "Section Task 2" --sectionId 789 --labels "work"
+node tools/todoist/task.js batch-add --tasks "Subtask 1" "Subtask 2" --parentId 456 --due-string "tomorrow"
 ```
 
 ### Project Command
@@ -264,4 +271,8 @@ Options:
 3. Use 'list sections' to verify section existence before creating or moving tasks
 4. Project names are case-sensitive and must match exactly (including emojis)
 5. When creating sections, verify the project exists first to avoid duplicate projects
-6. When filtering by project name, include any emojis that are part of the project name 
+6. When filtering by project name, include any emojis that are part of the project name
+7. Use find.js with batch commands for efficient bulk operations
+8. Keep filter queries simple and specific for better reliability
+9. Use --json output for programmatic processing or data export
+10. Verify task IDs before performing batch operations 
