@@ -6,7 +6,8 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import {
     initializeApi,
-    formatJsonOutput
+    formatJsonOutput,
+    getProjectPath
 } from './lib/task-utils.js';
 import { execSync } from 'child_process';
 
@@ -14,11 +15,32 @@ import { execSync } from 'child_process';
 const SYNC_ACTIVITY_URL = 'https://api.todoist.com/sync/v9/activity/get';
 
 // Add after the SYNC_ACTIVITY_URL constant
+const SYNC_COMPLETED_URL = 'https://api.todoist.com/sync/v9/completed/get_all';
+const SYNC_KARMA_URL = 'https://api.todoist.com/sync/v9/completed/get_stats';
+
 const REST_API_URL = 'https://api.todoist.com/rest/v2';
 
 // Add before groupActivities function
 const taskDetailsCache = new Map();
 const taskHierarchyCache = new Map();
+
+// Add karma reason code definitions
+const KARMA_REASON_CODES = {
+    // Positive karma reasons
+    1: 'You added tasks',
+    2: 'You completed tasks',
+    3: 'Usage of advanced features',
+    4: 'You are using Todoist. Thanks!',
+    5: 'Signed up for Todoist Beta!',
+    6: 'Used Todoist Support section!',
+    7: 'For using Todoist Pro - thanks for supporting us!',
+    8: 'Getting Started Guide task completed!',
+    9: 'Daily Goal reached!',
+    10: 'Weekly Goal reached!',
+    // Negative karma reasons
+    50: 'You have tasks that are over x days overdue',
+    52: 'Inactive for a longer period of time'
+};
 
 function cleanEventData(event, removeParentId = false) {
     if (!event) return null;
@@ -711,194 +733,465 @@ async function getActivity(options = {}) {
     };
 }
 
+// Add before main()
+async function getCompleted(options = {}) {
+    const params = new URLSearchParams();
+    
+    if (options.projectId) params.append('project_id', String(options.projectId));
+    if (options.limit) params.append('limit', String(options.limit));
+    if (options.offset) params.append('offset', String(options.offset));
+    if (options.since) params.append('since', options.since);
+    if (options.until) params.append('until', options.until);
+    
+    const url = `${SYNC_COMPLETED_URL}?${params.toString()}`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch completed tasks: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+        items: data.items || [],
+        projects: data.projects || {},
+        total_count: (data.items || []).length
+    };
+}
+
+// Add before getKarmaStats
+async function getKarmaStats() {
+    const response = await fetch(SYNC_KARMA_URL, {
+        headers: {
+            'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch karma stats: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Raw API Response:', JSON.stringify(data, null, 2));
+    
+    if (!data) {
+        throw new Error('No karma stats found in response');
+    }
+
+    return {
+        karma: data.karma,
+        karma_trend: {
+            karma_inc: data.karma_last_update,
+            trend: data.karma_trend
+        },
+        completed_count: data.completed_count,
+        daily_goal: data.goals?.daily_goal,
+        weekly_goal: data.goals?.weekly_goal,
+        ignored_days: data.goals?.ignore_days?.map(day => {
+            // Convert numeric day (1-7) to day name
+            const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            return days[day - 1];
+        }) || [],
+        daily_streak: data.goals?.current_daily_streak?.count,
+        max_daily_streak: data.goals?.max_daily_streak?.count,
+        weekly_streak: data.goals?.current_weekly_streak?.count,
+        max_weekly_streak: data.goals?.max_weekly_streak?.count,
+        karma_updates: data.karma_update_reasons?.map(update => ({
+            date: update.time,
+            karma: update.new_karma,
+            reasons: update.positive_karma_reasons.map(code => ({
+                reason_code: code,
+                karma_inc: update.positive_karma / update.positive_karma_reasons.length
+            }))
+        })) || [],
+        daily_stats: data.days_items?.map(day => ({
+            date: day.date,
+            total_completed: day.total_completed,
+            projects: day.items?.map(item => ({
+                id: item.id,
+                completed_count: item.completed
+            }))
+        })) || [],
+        weekly_stats: data.week_items?.map(week => ({
+            week: week.from,
+            total_completed: week.total_completed,
+            projects: week.items?.map(item => ({
+                id: item.id,
+                completed_count: item.completed
+            }))
+        })) || []
+    };
+}
+
+// Update formatCompletedOutput to use getProjectNameFromId
+async function formatCompletedOutput(data, jsonOutput = false) {
+    const api = await initializeApi();
+    const formattedItems = await Promise.all(data.items.map(async item => {
+        const projectName = await getProjectPath(api, item.project_id);
+        return {
+            content: item.content,
+            project: projectName,
+            completed_at: item.completed_at
+        };
+    }));
+
+    if (jsonOutput) {
+        return JSON.stringify(formattedItems, null, 2);
+    }
+
+    let output = [];
+
+    // Group items by project
+    const itemsByProject = {};
+    formattedItems.forEach(item => {
+        if (!itemsByProject[item.project]) {
+            itemsByProject[item.project] = [];
+        }
+        itemsByProject[item.project].push(item);
+    });
+
+    // Output items grouped by project
+    for (const [projectName, projectItems] of Object.entries(itemsByProject)) {
+        output.push(`\n=== Project: ${projectName} ===\n`);
+        
+        projectItems.forEach(item => {
+            output.push(`- [${item.completed_at}] ${item.content}`);
+        });
+    }
+
+    return output.join('\n');
+}
+
+// Update formatKarmaOutput to handle all karma information
+async function formatKarmaOutput(data, jsonOutput = false) {
+    const api = await initializeApi();
+    const formattedStats = {
+        karma: data.karma,
+        today: {
+            total: data.today_stats?.total_count || 0,
+            completed: data.today_stats?.completed_count || 0
+        },
+        week: {
+            total: data.week_stats?.total_count || 0,
+            completed: data.week_stats?.completed_count || 0
+        },
+        goals: {
+            daily: data.daily_goal,
+            weekly: data.weekly_goal,
+            ignored_days: data.ignored_days
+        },
+        streaks: {
+            daily: {
+                current: data.current_daily_streak,
+                max: data.max_daily_streak
+            },
+            weekly: {
+                current: data.current_weekly_streak,
+                max: data.max_weekly_streak
+            }
+        },
+        karma_updates: data.karma_updates || []
+    };
+
+    if (jsonOutput) {
+        return JSON.stringify(formattedStats, null, 2);
+    }
+
+    let output = [];
+    output.push('=== Current Karma Status ===');
+    output.push(`Current Karma: ${data.karma}`);
+    if (data.karma_trend) {
+        output.push(`Last Update: ${data.karma_trend.karma_inc || 0}`);
+        output.push(`Trend: ${data.karma_trend.trend || 'STABLE'}`);
+    }
+    output.push(`Total Completed Tasks: ${data.completed_count || 0}`);
+
+    output.push('\n=== Goals ===');
+    output.push(`Daily Goal: ${data.daily_goal} tasks`);
+    output.push(`Weekly Goal: ${data.weekly_goal} tasks`);
+    output.push(`Ignored Days: ${data.ignored_days.join(', ')}`);
+
+    output.push('\nStreaks:');
+    if (data.current_daily_streak) {
+        output.push(`- Current Daily Streak: ${data.current_daily_streak} days`);
+    }
+    if (data.max_daily_streak) {
+        output.push(`- Max Daily Streak: ${data.max_daily_streak} days`);
+    }
+    if (data.current_weekly_streak) {
+        output.push(`- Current Weekly Streak: ${data.current_weekly_streak} weeks`);
+    }
+    if (data.max_weekly_streak) {
+        output.push(`- Max Weekly Streak: ${data.max_weekly_streak} weeks`);
+    }
+
+    if (data.karma_updates?.length > 0) {
+        output.push('\n=== Recent Karma Updates ===');
+        for (const update of data.karma_updates) {
+            output.push(`\nUpdate on ${update.date}:`);
+            output.push(`- New Karma: ${update.karma}`);
+            if (update.reasons?.length > 0) {
+                output.push('- Positive Changes:');
+                for (const reason of update.reasons) {
+                    const description = KARMA_REASON_CODES[reason.reason_code] || 'Unknown reason';
+                    output.push(`  • ${description} (+${reason.karma_inc})`);
+                }
+            }
+        }
+    }
+
+    if (data.daily_stats?.length > 0) {
+        output.push('\n=== Daily Completion Stats ===');
+        for (const day of data.daily_stats) {
+            output.push(`\nDate: ${day.date}`);
+            output.push(`Total Completed: ${day.total_completed}`);
+            if (day.projects?.length > 0) {
+                output.push('Projects:');
+                for (const project of day.projects) {
+                    const projectName = await getProjectPath(api, project.id);
+                    output.push(`- ${projectName} (${project.id}): ${project.completed_count} tasks`);
+                }
+            }
+        }
+    }
+
+    if (data.weekly_stats?.length > 0) {
+        output.push('\n=== Weekly Completion Stats ===');
+        for (const week of data.weekly_stats) {
+            output.push(`\nWeek: ${week.week || 'Unknown Week'}`);
+            output.push(`Total Completed: ${week.total_completed}`);
+            if (week.projects?.length > 0) {
+                output.push('Projects:');
+                for (const project of week.projects) {
+                    const projectName = await getProjectPath(api, project.id);
+                    output.push(`- ${projectName} (${project.id}): ${project.completed_count} tasks`);
+                }
+            }
+        }
+    }
+
+    return output.join('\n');
+}
+
+// Update the main function to handle async formatters
 async function main() {
     const argv = yargs(hideBin(process.argv))
-        .usage('Usage: $0 [options]')
-        .example('$0', 'Get all activity from all time (excluding deleted items)')
-        .example('$0 --object-type item --event-type completed', 'Get task completion activity')
-        .example('$0 --parent-project-id "2349336695" --limit 10', 'Get last 10 activities in project')
-        .example('$0 --since "2024-01-01" --until "2024-03-31"', 'Get activity in specific date range')
-        .example('$0 --since "2024-01-01"', 'Get all activity from Jan 1st, 2024 onwards')
-        .example('$0 --until "2024-03-31"', 'Get all activity up until Mar 31st, 2024')
-        .example('$0 --include-deleted', 'Include deleted items in results')
-        .example('$0 --projectId "2349336695"', 'Get only events for specific project')
-        .example('$0 --projectId "2349336695" --include-children', 'Get events for project and all its contents')
-        .example('$0 --sectionId "12345" --include-children', 'Get events for section and its tasks')
-        .example('$0 --taskId "67890" --include-children', 'Get events for task and its subtasks')
-        .example('$0 --json', 'Output in JSON format with health indicators')
-        .conflicts('projectId', ['sectionId', 'taskId'])
-        .conflicts('sectionId', ['projectId', 'taskId'])
-        .conflicts('taskId', ['projectId', 'sectionId'])
-        .options({
-            'object-type': {
-                description: 'Filter by object type (item, project, section, note)',
-                type: 'string',
-                choices: ['item', 'project', 'section', 'note']
-            },
-            'object-id': {
-                description: 'Filter by object ID',
-                type: 'string'
-            },
-            'event-type': {
-                description: 'Filter by event type (added, updated, completed, deleted, uncompleted, archived, unarchived)',
-                type: 'string',
-                choices: ['added', 'updated', 'completed', 'deleted', 'uncompleted', 'archived', 'unarchived']
-            },
-            'parent-project-id': {
-                description: 'Filter by parent project ID',
-                type: 'string'
-            },
-            'parent-id': {
-                description: 'Filter by parent ID (for sub-tasks or project comments)',
-                type: 'string'
-            },
-            'projectId': {
-                description: 'Filter to show only events for a specific project and optionally its contents',
-                type: 'string'
-            },
-            'sectionId': {
-                description: 'Filter to show only events for a specific section and optionally its tasks',
-                type: 'string'
-            },
-            'taskId': {
-                description: 'Filter to show only events for a specific task and optionally its subtasks',
-                type: 'string'
-            },
-            'include-children': {
-                description: 'Include events for child items (sub-tasks, section tasks, or project contents)',
-                type: 'boolean',
-                default: false
-            },
-            'since': {
-                description: 'Start date (YYYY-MM-DD)',
-                type: 'string'
-            },
-            'until': {
-                description: 'End date (YYYY-MM-DD)',
-                type: 'string'
-            },
-            'limit': {
-                description: 'Maximum number of activities to return',
-                type: 'number'
-            },
-            'offset': {
-                description: 'Number of activities to skip',
-                type: 'number'
-            },
-            'include-deleted': {
-                description: 'Include deleted items in results',
-                type: 'boolean',
-                default: false
-            },
-            'json': {
-                description: 'Output in JSON format with health indicators (idle_warning, idle_critical, procrastination_warning, procrastination_critical)',
-                type: 'boolean',
-                default: false
-            }
+        .usage('Usage: $0 <command> [options]')
+        .command('activity', 'Get activity information from Todoist', (yargs) => {
+            return yargs
+                .example('$0 activity', 'Get all activity from all time (excluding deleted items)')
+                .example('$0 activity --object-type item --event-type completed', 'Get task completion activity')
+                .example('$0 activity --parent-project-id "2349336695" --limit 10', 'Get last 10 activities in project')
+                .example('$0 activity --since "2024-01-01" --until "2024-03-31"', 'Get activity in specific date range')
+                .example('$0 activity --since "2024-01-01"', 'Get all activity from Jan 1st, 2024 onwards')
+                .example('$0 activity --until "2024-03-31"', 'Get all activity up until Mar 31st, 2024')
+                .example('$0 activity --include-deleted', 'Include deleted items in results')
+                .example('$0 activity --projectId "2349336695"', 'Get only events for specific project')
+                .example('$0 activity --projectId "2349336695" --include-children', 'Get events for project and all its contents')
+                .example('$0 activity --sectionId "12345" --include-children', 'Get events for section and its tasks')
+                .example('$0 activity --taskId "67890" --include-children', 'Get events for task and its subtasks')
+                .example('$0 activity --json', 'Output in JSON format with health indicators')
+                .conflicts('projectId', ['sectionId', 'taskId'])
+                .conflicts('sectionId', ['projectId', 'taskId'])
+                .conflicts('taskId', ['projectId', 'sectionId'])
+                .options({
+                    'object-type': {
+                        description: 'Filter by object type (item, project, section, note)',
+                        type: 'string',
+                        choices: ['item', 'project', 'section', 'note']
+                    },
+                    'object-id': {
+                        description: 'Filter by object ID',
+                        type: 'string'
+                    },
+                    'event-type': {
+                        description: 'Filter by event type (added, updated, completed, deleted, uncompleted, archived, unarchived)',
+                        type: 'string',
+                        choices: ['added', 'updated', 'completed', 'deleted', 'uncompleted', 'archived', 'unarchived']
+                    },
+                    'parent-project-id': {
+                        description: 'Filter by parent project ID',
+                        type: 'string'
+                    },
+                    'parent-id': {
+                        description: 'Filter by parent ID (for sub-tasks or project comments)',
+                        type: 'string'
+                    },
+                    'projectId': {
+                        description: 'Filter to show only events for a specific project and optionally its contents',
+                        type: 'string'
+                    },
+                    'sectionId': {
+                        description: 'Filter to show only events for a specific section and optionally its tasks',
+                        type: 'string'
+                    },
+                    'taskId': {
+                        description: 'Filter to show only events for a specific task and optionally its subtasks',
+                        type: 'string'
+                    },
+                    'include-children': {
+                        description: 'Include events for child items (sub-tasks, section tasks, or project contents)',
+                        type: 'boolean',
+                        default: false
+                    },
+                    'since': {
+                        description: 'Start date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    'until': {
+                        description: 'End date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    'limit': {
+                        description: 'Maximum number of activities to return',
+                        type: 'number'
+                    },
+                    'offset': {
+                        description: 'Number of activities to skip',
+                        type: 'number'
+                    },
+                    'include-deleted': {
+                        description: 'Include deleted items in results',
+                        type: 'boolean',
+                        default: false
+                    },
+                    'json': {
+                        description: 'Output in JSON format with health indicators (idle_warning, idle_critical, procrastination_warning, procrastination_critical)',
+                        type: 'boolean',
+                        default: false
+                    }
+                })
+                .epilogue('JSON output includes health indicators for tasks:\n' +
+                         '- idle_warning: No activity for >30 days\n' +
+                         '- idle_critical: No activity for >90 days\n' +
+                         '- procrastination_warning: Average postpone >7 days\n' +
+                         '- procrastination_critical: Average postpone >30 days');
         })
-        .epilogue('JSON output includes health indicators for tasks:\n' +
-                 '- idle_warning: No activity for >30 days\n' +
-                 '- idle_critical: No activity for >90 days\n' +
-                 '- procrastination_warning: Average postpone >7 days\n' +
-                 '- procrastination_critical: Average postpone >30 days')
+        .command('completed', 'Get completed tasks from Todoist', (yargs) => {
+            return yargs
+                .example('$0 completed', 'Get all completed tasks')
+                .example('$0 completed --projectId "123456"', 'Get completed tasks for a specific project')
+                .example('$0 completed --since "2024-01-01"', 'Get tasks completed since Jan 1st, 2024')
+                .example('$0 completed --until "2024-03-31"', 'Get tasks completed until Mar 31st, 2024')
+                .example('$0 completed --limit 10', 'Get last 10 completed tasks')
+                .example('$0 completed --json', 'Output in JSON format')
+                .options({
+                    'projectId': {
+                        description: 'Filter by project ID',
+                        type: 'string'
+                    },
+                    'since': {
+                        description: 'Start date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    'until': {
+                        description: 'End date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    'limit': {
+                        description: 'Maximum number of tasks to return',
+                        type: 'number'
+                    },
+                    'offset': {
+                        description: 'Number of tasks to skip',
+                        type: 'number'
+                    },
+                    'json': {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                });
+        })
+        .command('karma', 'Get karma statistics from Todoist', (yargs) => {
+            return yargs
+                .example('$0 karma', 'Get karma statistics')
+                .example('$0 karma --json', 'Get karma statistics in JSON format')
+                .options({
+                    'json': {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                });
+        })
+        .demandCommand(1, 'You must specify a command')
         .help()
         .argv;
 
     const api = await initializeApi();
 
     try {
-        const options = {
-            objectType: argv.objectType,
-            objectId: argv.objectId,
-            eventType: argv.eventType,
-            parentProjectId: argv.projectId || argv.parentProjectId,
-            parentId: argv.parentId,
-            since: argv.since,
-            until: argv.until,
-            limit: argv.limit,
-            offset: argv.offset,
-            includeDeleted: argv.includeDeleted
-        };
-
-        const activities = await getActivity(options);
-
-        if (!activities.events || activities.events.length === 0) {
-            console.log('No activities found');
-            return;
-        }
-
-        const groupedActivities = await groupActivities(activities.events, argv.projectId);
-        
-        // Apply filtering based on projectId/sectionId/taskId if specified
-        let finalOutput = groupedActivities;
-        if (argv.projectId || argv.sectionId || argv.taskId) {
-            const filteredGroups = {
-                projects: {},
-                other_events: []
+        if (argv._[0] === 'activity') {
+            const options = {
+                objectType: argv.objectType,
+                objectId: argv.objectId,
+                eventType: argv.eventType,
+                parentProjectId: argv.projectId || argv.parentProjectId,
+                parentId: argv.parentId,
+                since: argv.since,
+                until: argv.until,
+                limit: argv.limit,
+                offset: argv.offset,
+                includeDeleted: argv.includeDeleted
             };
 
-            if (argv.projectId) {
-                const projectId = String(argv.projectId);
-                // Find the project (could be nested)
-                const findAndFilterProject = (projects) => {
-                    for (const [id, project] of Object.entries(projects)) {
-                        if (id === projectId) {
-                            // Found the project
-                            if (!argv.includeChildren) {
-                                // Only include project events
-                                filteredGroups.projects[id] = {
-                                    project_events: project.project_events,
-                                    sections: {},
-                                    items: project.items,
-                                    comments: project.comments,
-                                    child_projects: {}
-                                };
-                            } else {
-                                // Include everything
-                                filteredGroups.projects[id] = project;
-                            }
-                            return true;
-                        }
-                        // Check child projects
-                        if (findAndFilterProject(project.child_projects)) {
-                            return true;
-                        }
-                    }
-                    return false;
+            const activities = await getActivity(options);
+
+            if (!activities.events || activities.events.length === 0) {
+                console.log('No activities found');
+                return;
+            }
+
+            const groupedActivities = await groupActivities(activities.events, argv.projectId);
+            
+            // Apply filtering based on projectId/sectionId/taskId if specified
+            let finalOutput = groupedActivities;
+            if (argv.projectId || argv.sectionId || argv.taskId) {
+                const filteredGroups = {
+                    projects: {},
+                    other_events: []
                 };
-                findAndFilterProject(groupedActivities.projects);
-            } else if (argv.sectionId) {
-                const sectionId = argv.sectionId;
-                // Find the section's project and filter to just that section
-                for (const [projectId, project] of Object.entries(groupedActivities.projects)) {
-                    if (project.sections[sectionId]) {
-                        filteredGroups.projects[projectId] = {
-                            project_events: [],
-                            sections: {},
-                            items: {},
-                            comments: [],
-                            child_projects: {}
-                        };
-                        if (!argv.includeChildren) {
-                            // Only include section events
-                            filteredGroups.projects[projectId].sections[sectionId] = {
-                                section_events: project.sections[sectionId].section_events,
-                                items: {}
-                            };
-                        } else {
-                            // Include section and its items
-                            filteredGroups.projects[projectId].sections[sectionId] = project.sections[sectionId];
+
+                if (argv.projectId) {
+                    const projectId = String(argv.projectId);
+                    // Find the project (could be nested)
+                    const findAndFilterProject = (projects) => {
+                        for (const [id, project] of Object.entries(projects)) {
+                            if (id === projectId) {
+                                // Found the project
+                                if (!argv.includeChildren) {
+                                    // Only include project events
+                                    filteredGroups.projects[id] = {
+                                        project_events: project.project_events,
+                                        sections: {},
+                                        items: project.items,
+                                        comments: project.comments,
+                                        child_projects: {}
+                                    };
+                                } else {
+                                    // Include everything
+                                    filteredGroups.projects[id] = project;
+                                }
+                                return true;
+                            }
+                            // Check child projects
+                            if (findAndFilterProject(project.child_projects)) {
+                                return true;
+                            }
                         }
-                        break;
-                    }
-                }
-            } else if (argv.taskId) {
-                const taskId = argv.taskId;
-                // Find the task and its project/section
-                const findAndFilterTask = (items, projectId, sectionId = null) => {
-                    if (items[taskId]) {
-                        // Found the task directly
-                        if (!filteredGroups.projects[projectId]) {
+                        return false;
+                    };
+                    findAndFilterProject(groupedActivities.projects);
+                } else if (argv.sectionId) {
+                    const sectionId = argv.sectionId;
+                    // Find the section's project and filter to just that section
+                    for (const [projectId, project] of Object.entries(groupedActivities.projects)) {
+                        if (project.sections[sectionId]) {
                             filteredGroups.projects[projectId] = {
                                 project_events: [],
                                 sections: {},
@@ -906,72 +1199,120 @@ async function main() {
                                 comments: [],
                                 child_projects: {}
                             };
-                        }
-                        if (sectionId) {
-                            filteredGroups.projects[projectId].sections[sectionId] = {
-                                section_events: [],
-                                items: {}
-                            };
-                            filteredGroups.projects[projectId].sections[sectionId].items[taskId] = 
-                                argv.includeChildren ? items[taskId] : {
-                                    item_events: items[taskId].item_events,
-                                    comments: items[taskId].comments,
-                                    sub_items: {}
+                            if (!argv.includeChildren) {
+                                // Only include section events
+                                filteredGroups.projects[projectId].sections[sectionId] = {
+                                    section_events: project.sections[sectionId].section_events,
+                                    items: {}
                                 };
-                        } else {
-                            filteredGroups.projects[projectId].items[taskId] = 
-                                argv.includeChildren ? items[taskId] : {
-                                    item_events: items[taskId].item_events,
-                                    comments: items[taskId].comments,
-                                    sub_items: {}
-                                };
-                        }
-                        return true;
-                    }
-                    // Check sub-items if we haven't found it yet
-                    for (const item of Object.values(items)) {
-                        if (findAndFilterTask(item.sub_items, projectId, sectionId)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                };
-
-                // Search in all projects and their sections
-                for (const [projectId, project] of Object.entries(groupedActivities.projects)) {
-                    // Check direct items
-                    if (findAndFilterTask(project.items, projectId)) {
-                        break;
-                    }
-                    // Check items in sections
-                    for (const [sectionId, section] of Object.entries(project.sections)) {
-                        if (findAndFilterTask(section.items, projectId, sectionId)) {
+                            } else {
+                                // Include section and its items
+                                filteredGroups.projects[projectId].sections[sectionId] = project.sections[sectionId];
+                            }
                             break;
                         }
                     }
+                } else if (argv.taskId) {
+                    const taskId = argv.taskId;
+                    // Find the task and its project/section
+                    const findAndFilterTask = (items, projectId, sectionId = null) => {
+                        if (items[taskId]) {
+                            // Found the task directly
+                            if (!filteredGroups.projects[projectId]) {
+                                filteredGroups.projects[projectId] = {
+                                    project_events: [],
+                                    sections: {},
+                                    items: {},
+                                    comments: [],
+                                    child_projects: {}
+                                };
+                            }
+                            if (sectionId) {
+                                filteredGroups.projects[projectId].sections[sectionId] = {
+                                    section_events: [],
+                                    items: {}
+                                };
+                                filteredGroups.projects[projectId].sections[sectionId].items[taskId] = 
+                                    argv.includeChildren ? items[taskId] : {
+                                        item_events: items[taskId].item_events,
+                                        comments: items[taskId].comments,
+                                        sub_items: {}
+                                    };
+                            } else {
+                                filteredGroups.projects[projectId].items[taskId] = 
+                                    argv.includeChildren ? items[taskId] : {
+                                        item_events: items[taskId].item_events,
+                                        comments: items[taskId].comments,
+                                        sub_items: {}
+                                    };
+                            }
+                            return true;
+                        }
+                        // Check sub-items if we haven't found it yet
+                        for (const item of Object.values(items)) {
+                            if (findAndFilterTask(item.sub_items, projectId, sectionId)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    };
+
+                    // Search in all projects and their sections
+                    for (const [projectId, project] of Object.entries(groupedActivities.projects)) {
+                        // Check direct items
+                        if (findAndFilterTask(project.items, projectId)) {
+                            break;
+                        }
+                        // Check items in sections
+                        for (const [sectionId, section] of Object.entries(project.sections)) {
+                            if (findAndFilterTask(section.items, projectId, sectionId)) {
+                                break;
+                            }
+                        }
+                    }
                 }
+
+                finalOutput = {
+                    ...filteredGroups,
+                    total_count: activities.count
+                };
+            } else {
+                finalOutput = {
+                    ...groupedActivities,
+                    total_count: activities.count
+                };
             }
 
-            finalOutput = {
-                ...filteredGroups,
-                total_count: activities.count
-            };
-        } else {
-            finalOutput = {
-                ...groupedActivities,
-                total_count: activities.count
-            };
-        }
+            // Add health indicators
+            addHealthIndicatorsToJson(finalOutput);
 
-        // Add health indicators
-        addHealthIndicatorsToJson(finalOutput);
+            if (argv.json) {
+                // Output JSON format
+                console.log(JSON.stringify(finalOutput, null, 2));
+            } else {
+                // Convert JSON to human-readable format
+                console.log(formatTextOutput(finalOutput));
+            }
+        } else if (argv._[0] === 'completed') {
+            const options = {
+                projectId: argv.projectId,
+                since: argv.since,
+                until: argv.until,
+                limit: argv.limit,
+                offset: argv.offset
+            };
 
-        if (argv.json) {
-            // Output JSON format
-            console.log(JSON.stringify(finalOutput, null, 2));
-        } else {
-            // Convert JSON to human-readable format
-            console.log(formatTextOutput(finalOutput));
+            const completedData = await getCompleted(options);
+
+            if (!completedData.items || completedData.items.length === 0) {
+                console.log('No completed tasks found');
+                return;
+            }
+
+            console.log(await formatCompletedOutput(completedData, argv.json));
+        } else if (argv._[0] === 'karma') {
+            const karmaData = await getKarmaStats();
+            console.log(await formatKarmaOutput(karmaData, argv.json));
         }
     } catch (error) {
         console.error('Error:', error.message);
