@@ -3,24 +3,6 @@
 import { TodoistApi } from '@doist/todoist-api-typescript';
 import { initializeApi, getProjectPath } from './lib/task-utils.js';
 
-const filter = process.argv[2];
-if (!filter) {
-  console.error('Usage: find.js <filter> [--ids] [--json]');
-  console.error('Examples:');
-  console.error('  find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label');
-  console.error('  find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1');
-  console.error('  find.js "p:FLOOBY & @test" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533');
-  process.exit(1);
-}
-
-const ids = process.argv.includes('--ids');
-const json = process.argv.includes('--json');
-
-if (ids && json) {
-  console.error('Error: Cannot use both --ids and --json options');
-  process.exit(1);
-}
-
 const HELP = {
   description: 'Find tasks using Todoist filters',
   usage: 'find.js <filter> [--ids] [--json]',
@@ -63,6 +45,37 @@ const HELP = {
     '  - Cannot use both --ids and --json together'
   ]
 };
+
+// Handle help flag
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(`\n${HELP.description}\n`);
+  console.log(`Usage: ${HELP.usage}\n`);
+  console.log('Examples:');
+  HELP.examples.forEach(example => console.log(`  ${example}`));
+  console.log('\nOptions:');
+  Object.entries(HELP.options).forEach(([option, desc]) => console.log(`  ${option}\t${desc}`));
+  console.log('\nNotes:');
+  HELP.notes.forEach(note => console.log(note));
+  process.exit(0);
+}
+
+const filter = process.argv[2];
+if (!filter) {
+  console.error('Usage: find.js <filter> [--ids] [--json]');
+  console.error('Examples:');
+  console.error('  find.js "p:FLOOBY & @test"     # Find tasks in FLOOBY project with @test label');
+  console.error('  find.js "overdue" --ids | xargs task.js batch-update --taskIds --priority 1');
+  console.error('  find.js "p:FLOOBY & @test" --ids | xargs task.js batch-move --taskIds --to-section-id 183758533');
+  process.exit(1);
+}
+
+const ids = process.argv.includes('--ids');
+const json = process.argv.includes('--json');
+
+if (ids && json) {
+  console.error('Error: Cannot use both --ids and --json options');
+  process.exit(1);
+}
 
 async function main() {
   try {

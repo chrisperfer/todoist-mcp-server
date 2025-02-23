@@ -2,7 +2,6 @@
 description: run todoist tools
 globs: *.*
 ---
-
 # Tools
 All todoist tools are in @tools/todoist.
 
@@ -17,6 +16,13 @@ All todoist tools are in @tools/todoist.
 
 # Recommended Approaches
 
+## Finding and Filtering Tasks
+- Basic task finding: `node tools/todoist/find.js "p:FLOOBY & @test"`
+- Search by text: `node tools/todoist/find.js "search:meeting"`
+- Combine filters: `node tools/todoist/find.js "today | tomorrow"`
+- Get task IDs for batch operations: `node tools/todoist/find.js "overdue" --ids`
+- Get detailed task info: `node tools/todoist/find.js "p:FLOOBY & @test" --json`
+
 ## Listing and Filtering
 - For basic task listing: `node tools/todoist/list.js tasks`
 - For project-specific tasks: `node tools/todoist/list.js tasks --filter "p:Project Name"`
@@ -30,21 +36,24 @@ All todoist tools are in @tools/todoist.
 1. DISCOVERY
    - List project tasks: `list tasks --filter "p:Project Name"`
    - Check existing sections: `list sections --filter "p:Project Name"`
+   - Find specific tasks: `find.js "p:Project & search:term"`
    - Analyze tasks for natural groupings
 
 2. SECTION CREATION
    - Create broad, non-overlapping categories
    - Use clear, descriptive section names
-   - Add sections one at a time (add-section.js)
+   - Add sections one at a time: `section.js add --name "Section Name" --projectId <id>`
    - Verify section creation before proceeding
+   - if you feel you need more context, you can get the project notes.
 
 3. TASK MOVEMENT
    - Use batch-move with specific search terms
-   - Example: `task.js batch-move "p:Project & search:term" --to-section <id>`
+   - Example: `task.js batch-move --taskIds <ids> --to-section-id <id>`
    - Move most specific/clear tasks first
-   - Use multiple search terms when needed: `"search:term1 | search:term2"`
+   - Use find.js for complex filters: `find.js "p:Project & (search:term1 | search:term2)" --ids | xargs task.js batch-move --taskIds --to-section-id <id>`
    - Verify after each batch move
    - Handle remaining tasks individually if needed
+   - if you feel you need more context, you can get the project notes.
 
 4. VERIFICATION
    - List all tasks again to verify organization
@@ -55,19 +64,22 @@ All todoist tools are in @tools/todoist.
 
 1. ANALYSIS
    - List all tasks: `list tasks --filter "p:Project Name"`
+   - Use find.js for specific patterns: `find.js "p:Project & search:pattern"`
    - Identify natural categories
    - Plan category names with appropriate emojis
+   - if you feel you need more context, you can get the project notes.
 
 2. PARENT TASK CREATION
    - Create parent tasks directly in project
    - Use emojis for visual distinction
-   - Example: `task.js add "📁 Category Name" --project <id>`
+   - Example: `task.js add --content "📁 Category Name" --project <id>`
 
 3. BATCH ORGANIZATION
-   - Use batch-move with specific search terms
-   - Combine related terms: `"search:term1 | search:term2"`
+   - Use find.js to identify related tasks
+   - Combine related terms: `find.js "p:Project & (search:term1 | search:term2)" --ids`
    - Move tasks category by category
-   - Command: `task.js batch-move "p:Project & (search:term1 | search:term2)" --to-parent <id>`
+   - Command: `task.js batch-move --taskIds <ids> --to-parent-id <id>`
+   - if you feel you need more context, you can get the project notes.
 
 4. VERIFICATION
    - Check organization after each batch
@@ -78,24 +90,28 @@ All todoist tools are in @tools/todoist.
 
 1. ANALYSIS
    - List parent project tasks: `list tasks --filter "p:Project Name"`
+   - Use find.js for detailed filtering: `find.js "p:Project & no labels"`
    - Identify natural groupings based on:
      * Task type (e.g., recipes vs restaurants)
      * Task context (e.g., planning vs execution)
      * Task workflow (e.g., research vs implementation)
+   - if you feel you need more context, you can get the project notes.
    - Plan category names with emojis
 
 2. SUB-PROJECT CREATION
    - Get parent project info: `list projects --filter "Project Name"`
    - Create sub-projects using parent ID:
-     * Command: `add-project.js "📁 Category Name" --parentId <id>`
+     * Command: `project.js add --name "📁 Category Name" --parentId <id>`
    - Use meaningful emojis as prefixes
    - Keep names broad enough for future tasks
+   - if you feel you need more context, you can get the project notes.
 
 3. TASK MIGRATION
-   - Use batch-move with specific search terms
+   - Use find.js to identify tasks to move
    - Combine multiple terms with OR:
-     * Command: `task.js batch-move "p:Project & (search:term1 | search:term2)" --to-project <id>`
+     * Command: `find.js "p:Project & (search:term1 | search:term2)" --ids | xargs task.js batch-move --taskIds --to-project-id <id>`
    - Move clearly categorized tasks first
+   - if you feel you need more context, you can get the project notes.
    - Handle ambiguous tasks individually
 
 4. VERIFICATION
@@ -111,7 +127,20 @@ All todoist tools are in @tools/todoist.
 - Keep consistent naming conventions
 - Document uncertain categorizations
 - Use --json flag when programmatic access is needed
-- Leverage the Sync API's enhanced capabilities through the unified list command
+- if you feel you need more context, you can get the project notes.
+- Leverage find.js for complex filtering
+- Use the Sync API's enhanced capabilities through the unified list command
+
+## Filter Syntax Guide
+- p:ProjectName    Search in project
+- search:text      Search for text in task names
+- @label          Search by label
+- no date         Tasks without dates
+- no labels       Tasks without labels
+- overdue         Overdue tasks
+- today           Due today
+- &               Combine filters (AND)
+- |               Combine filters (OR)
 
 ## Example Category Prefixes
 🎯 Goals/Objectives    📋 Planning/Lists
@@ -122,10 +151,11 @@ All todoist tools are in @tools/todoist.
 When handling tasks labeled with @elaborate:
 
 1. TASK CLASSIFICATION
-   - Use `list-tasks.js --filter "@elaborate"` to find all tasks
+   - Use `find.js "@elaborate" --json` to find all tasks
    - Classify each task as either:
      a) Research-oriented (needs information gathering)
      b) Action-oriented (needs breaking down into steps)
+   - Remove @elaborate and add @elaborated when done
 
 2. FOR RESEARCH TASKS:
    - Create a parent "Research findings:" task
@@ -133,6 +163,7 @@ When handling tasks labeled with @elaborate:
    - Include direct links to sources
    - Focus on actionable information
    - Remove @elaborate label once research is complete
+   - Add an @elaborated label once done.
 
 3. FOR ACTION-ORIENTED TASKS:
    - Create a parent task with appropriate emoji
@@ -140,6 +171,7 @@ When handling tasks labeled with @elaborate:
    - Include specific metrics where possible (time, frequency, etc.)
    - Ensure each subtask is self-contained and clear
    - Remove @elaborate label once broken down
+   - Add an @elaborated label once done.
 
 4. BEST PRACTICES:
    - Always maintain task hierarchy (parent/child relationships)
@@ -148,11 +180,10 @@ When handling tasks labeled with @elaborate:
    - Add time estimates where applicable
    - Keep subtasks focused and actionable
 
-
 TASK LABELING BEST PRACTICES:
 
 1. ANALYSIS PHASE
-   - First list all tasks in the target project
+   - First list all tasks: `find.js "p:Project" --json`
    - Review available labels (especially the goal-related ones)
    - Mentally categorize items before starting to label
 
@@ -161,7 +192,7 @@ TASK LABELING BEST PRACTICES:
    - Process one category at a time
    - Keep search queries simple and unambiguous
    - Use single terms when possible to avoid syntax issues
-   - Format: task.js batch-label "p:ProjectName & search:term" --add-labels "Label ★"
+   - Format: `task.js batch-update --taskIds <ids> --add-labels "Label ★"`
 
 3. VALIDATION
    - After each batch, verify the changes were applied correctly
@@ -173,12 +204,10 @@ TASK LABELING BEST PRACTICES:
    - Avoid special characters in search terms when possible
    - If using multiple search terms, test one first before combining
    - Watch out for spaces and special characters in label names
+   - sanity check yourself with the detail in found items to feel confident you are finding the right stuff; similarly, when saving pay attention to the returned values which should confirm you did what was expected.
 
 5. EFFICIENCY TIPS
    - Start with the most clearly categorizable items
-   - Use the most specific search terms possible
+   - Use find.js for precise filtering
    - Process similar items together
    - Keep track of what's been labeled to avoid duplicates
-
-# Your rule content
-all todoist tools are in @tools/todoist, and are node scripts that you can run to query todoist and update todoist.  You have permission to run them. Please use the tools and do not try and go off piste and create something new. If you find a gap in something that you cannot do, notifiy the user and add it to todoist_gaps.md
