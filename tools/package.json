@@ -17,7 +17,9 @@
     "todoist:task": "node tools/todoist/task.js",
     "todoist:project": "node tools/todoist/project.js",
     "todoist:workflow": "node tools/todoist/workflow-tool.js",
-    "todoist:activity": "node tools/todoist/activity.js"
+    "todoist:activity": "node tools/todoist/activity.js",
+    "todoist:karma": "node tools/todoist/status.js karma",
+    "todoist:completed": "node tools/todoist/status.js completed"
   },
   "dependencies": {
     "@doist/todoist-api-typescript": "^3.0.3"
@@ -358,6 +360,48 @@
         "- idle_critical: No activity for >90 days",
         "- procrastination_warning: Average postpone >7 days",
         "- procrastination_critical: Average postpone >30 days"
+      ]
+    },
+    "karma": {
+      "description": "Get karma statistics and life goals breakdown from Todoist",
+      "options": {
+        "--json": "Output in JSON format with detailed statistics"
+      },
+      "examples": [
+        "node tools/todoist/status.js karma",
+        "node tools/todoist/status.js karma --json"
+      ],
+      "notes": [
+        "Output includes:",
+        "- Current karma and trend",
+        "- Daily and weekly goals",
+        "- Streak information",
+        "- Recent karma updates with reasons",
+        "- Daily and weekly completion stats",
+        "- Life goals breakdown showing task distribution"
+      ]
+    },
+    "completed": {
+      "description": "Get completed tasks with life goals statistics",
+      "options": {
+        "--projectId": "Filter by project ID",
+        "--since": "Start date (YYYY-MM-DD)",
+        "--until": "End date (YYYY-MM-DD)",
+        "--limit": "Maximum number of tasks to return",
+        "--offset": "Number of tasks to skip",
+        "--json": "Output in JSON format with life goals statistics"
+      },
+      "examples": [
+        "node tools/todoist/status.js completed",
+        "node tools/todoist/status.js completed --json",
+        "node tools/todoist/status.js completed --since \"2024-01-01\"",
+        "node tools/todoist/status.js completed --projectId \"123456789\""
+      ],
+      "notes": [
+        "JSON output includes:",
+        "- Life goals summary with task counts and percentages",
+        "- Detailed task information with project paths",
+        "- Inbox tasks are excluded from life goals statistics"
       ]
     }
   }

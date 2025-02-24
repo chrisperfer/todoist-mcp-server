@@ -23,6 +23,8 @@ The tools have been consolidated into three main commands plus utilities:
 - `project` - Manage projects (add, update, bulk operations)
 - `workflow` - Process sequential thoughts
 - `activity` - View and analyze Todoist activity
+- `karma` - Get karma statistics and life goals breakdown
+- `completed` - Get completed tasks with life goals statistics
 
 ### List Command
 
@@ -431,6 +433,66 @@ Notes:
 - The --json option provides structured output with health analysis
 - Use --include-children to see events for all nested items
 - Can filter by project, section, or task (mutually exclusive)
+
+### Karma Command
+
+The command for viewing karma statistics and life goals breakdown:
+
+```bash
+node tools/todoist/status.js karma [options]
+
+Options:
+  --json              Output in JSON format with detailed statistics
+
+Examples:
+# View karma statistics
+node tools/todoist/status.js karma
+
+# Get detailed JSON output
+node tools/todoist/status.js karma --json
+
+Output includes:
+- Current karma and trend
+- Daily and weekly goals
+- Streak information
+- Recent karma updates with reasons
+- Daily and weekly completion stats
+- Life goals breakdown showing task distribution across life areas
+```
+
+### Completed Tasks Command
+
+The command for viewing completed tasks with life goals statistics:
+
+```bash
+node tools/todoist/status.js completed [options]
+
+Options:
+  --projectId "<id>"    Filter by project ID
+  --since "<date>"      Start date (YYYY-MM-DD)
+  --until "<date>"      End date (YYYY-MM-DD)
+  --limit <n>          Maximum number of tasks to return
+  --offset <n>         Number of tasks to skip
+  --json              Output in JSON format with life goals statistics
+
+Examples:
+# View all completed tasks
+node tools/todoist/status.js completed
+
+# Get completed tasks with life goals statistics in JSON format
+node tools/todoist/status.js completed --json
+
+# Get tasks completed since a specific date
+node tools/todoist/status.js completed --since "2024-01-01"
+
+# Get completed tasks for a specific project
+node tools/todoist/status.js completed --projectId "123456789"
+
+Notes:
+- JSON output includes life goals summary with task counts and percentages
+- Detailed task information includes project paths and completion dates
+- Inbox tasks are excluded from life goals statistics
+- Life goals are extracted from the top-level project names
 
 ### Utility Commands
 

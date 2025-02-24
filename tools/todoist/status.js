@@ -759,6 +759,7 @@ async function getCompleted(options = {}) {
     }
 
     const data = await response.json();
+    console.log('Completed tasks response:', JSON.stringify(data, null, 2));
     return {
         items: data.items || [],
         projects: data.projects || {},
@@ -831,22 +832,27 @@ async function getKarmaStats() {
     };
 }
 
-// Add function to fetch all projects at once
+// Add function to fetch all projects once
 async function fetchAndCacheProjects(api) {
     if (projectCache.size > 0) return; // Already cached
 
     try {
-        const response = await fetch(`${REST_API_URL}/projects`, {
+        // Get all projects using the sync API
+        const response = await fetch('https://api.todoist.com/sync/v9/sync', {
+            method: 'POST',
             headers: {
-                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
-            }
+                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'sync_token=*&resource_types=["projects"]'
         });
 
         if (!response.ok) {
             throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
         }
 
-        const projects = await response.json();
+        const data = await response.json();
+        const projects = data.projects || [];
         
         // Build path cache for each project
         for (const project of projects) {
@@ -861,7 +867,47 @@ async function fetchAndCacheProjects(api) {
                 currentProject = parent;
             }
             
+            // Cache both v1 and v2 IDs
             projectCache.set(String(project.id), path);
+            if (project.v2_id) {
+                projectCache.set(project.v2_id, path);
+            }
+        }
+
+        // Get completed tasks to find any missing project paths
+        const completedResponse = await fetch(SYNC_COMPLETED_URL, {
+            headers: {
+                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+            }
+        });
+
+        if (completedResponse.ok) {
+            const completedData = await completedResponse.json();
+            const items = completedData.items || [];
+
+            // Group completed items by project ID
+            const itemsByProject = {};
+            items.forEach(item => {
+                if (!itemsByProject[item.project_id]) {
+                    itemsByProject[item.project_id] = [];
+                }
+                itemsByProject[item.project_id].push(item);
+            });
+
+            // For each project that's not in our cache, use the first item's project path
+            Object.entries(itemsByProject).forEach(([projectId, items]) => {
+                if (!projectCache.has(String(projectId)) && items.length > 0) {
+                    const firstItem = items[0];
+                    // Try to extract project path from the first item
+                    const projectPath = firstItem.project || `Unknown Project (${projectId})`;
+                    if (!projectPath.startsWith('Unknown Project')) {
+                        projectCache.set(String(projectId), projectPath);
+                        if (firstItem.v2_project_id) {
+                            projectCache.set(firstItem.v2_project_id, projectPath);
+                        }
+                    }
+                }
+            });
         }
     } catch (error) {
         console.error('Error fetching projects:', error.message);
@@ -891,7 +937,10 @@ async function formatCompletedOutput(data, jsonOutput = false) {
     await fetchAndCacheProjects(api);
 
     const formattedItems = data.items.map(item => {
-        const projectPath = projectCache.get(String(item.project_id)) || `Unknown Project (${item.project_id})`;
+        // Try both v1 and v2 project IDs
+        const projectPath = projectCache.get(String(item.project_id)) || 
+                          projectCache.get(item.v2_project_id) || 
+                          `Unknown Project (${item.project_id})`;
         return {
             content: item.content,
             project: projectPath,
@@ -901,7 +950,32 @@ async function formatCompletedOutput(data, jsonOutput = false) {
     });
 
     if (jsonOutput) {
-        return JSON.stringify(formattedItems, null, 2);
+        // Calculate life goals statistics
+        const goalStats = {};
+        let totalTasks = 0;
+        
+        formattedItems.forEach(item => {
+            if (item.life_goal && item.life_goal !== 'Inbox') {
+                if (!goalStats[item.life_goal]) {
+                    goalStats[item.life_goal] = { count: 0 };
+                }
+                goalStats[item.life_goal].count++;
+                totalTasks++;
+            }
+        });
+        
+        // Add percentages
+        Object.values(goalStats).forEach(stats => {
+            stats.percentage = totalTasks > 0 ? (stats.count / totalTasks) * 100 : 0;
+        });
+        
+        return JSON.stringify({
+            life_goals_summary: {
+                stats: goalStats,
+                total_tasks: totalTasks
+            },
+            items: formattedItems
+        }, null, 2);
     }
 
     let output = [];
@@ -961,7 +1035,10 @@ async function formatKarmaOutput(data, jsonOutput = false) {
         let totalTasks = 0;
         
         projects.forEach(project => {
-            const projectPath = projectCache.get(String(project.id)) || `Unknown Project (${project.id})`;
+            // Try both v1 and v2 project IDs
+            const projectPath = projectCache.get(String(project.id)) || 
+                              (project.v2_id && projectCache.get(project.v2_id)) || 
+                              `Unknown Project (${project.id})`;
             const lifeGoal = extractLifeGoal(projectPath);
             const count = project.completed_count;
             
@@ -972,7 +1049,16 @@ async function formatKarmaOutput(data, jsonOutput = false) {
             }
         });
         
-        return { goalStats, totalTasks };
+        // Convert to percentage format for JSON output
+        const goalStatsWithPercentage = {};
+        Object.entries(goalStats).forEach(([goal, count]) => {
+            goalStatsWithPercentage[goal] = {
+                count,
+                percentage: totalTasks > 0 ? (count / totalTasks) * 100 : 0
+            };
+        });
+        
+        return { goalStats: goalStatsWithPercentage, totalTasks };
     };
 
     // Add life goals stats to the formatted data
@@ -993,15 +1079,47 @@ async function formatKarmaOutput(data, jsonOutput = false) {
         },
         streaks: {
             daily: {
-                current: data.current_daily_streak,
+                current: data.daily_streak,
                 max: data.max_daily_streak
             },
             weekly: {
-                current: data.current_weekly_streak,
+                current: data.weekly_streak,
                 max: data.max_weekly_streak
             }
         },
-        karma_updates: data.karma_updates || []
+        karma_updates: data.karma_updates || [],
+        daily_stats: data.daily_stats?.map(day => {
+            const { goalStats, totalTasks } = processProjectStats(day.projects || []);
+            return {
+                date: day.date,
+                total_completed: day.total_completed,
+                life_goals: goalStats,
+                total_life_goals_tasks: totalTasks,
+                projects: day.projects?.map(project => ({
+                    id: project.id,
+                    path: projectCache.get(String(project.id)) || 
+                          (project.v2_id && projectCache.get(project.v2_id)) || 
+                          `Unknown Project (${project.id})`,
+                    completed_count: project.completed_count
+                }))
+            };
+        }) || [],
+        weekly_stats: data.weekly_stats?.map(week => {
+            const { goalStats, totalTasks } = processProjectStats(week.projects || []);
+            return {
+                week: week.week,
+                total_completed: week.total_completed,
+                life_goals: goalStats,
+                total_life_goals_tasks: totalTasks,
+                projects: week.projects?.map(project => ({
+                    id: project.id,
+                    path: projectCache.get(String(project.id)) || 
+                          (project.v2_id && projectCache.get(project.v2_id)) || 
+                          `Unknown Project (${project.id})`,
+                    completed_count: project.completed_count
+                }))
+            };
+        }) || []
     };
 
     if (jsonOutput) {
@@ -1023,14 +1141,14 @@ async function formatKarmaOutput(data, jsonOutput = false) {
     output.push(`Ignored Days: ${data.ignored_days.join(', ')}`);
 
     output.push('\nStreaks:');
-    if (data.current_daily_streak) {
-        output.push(`- Current Daily Streak: ${data.current_daily_streak} days`);
+    if (data.daily_streak) {
+        output.push(`- Current Daily Streak: ${data.daily_streak} days`);
     }
     if (data.max_daily_streak) {
         output.push(`- Max Daily Streak: ${data.max_daily_streak} days`);
     }
-    if (data.current_weekly_streak) {
-        output.push(`- Current Weekly Streak: ${data.current_weekly_streak} weeks`);
+    if (data.weekly_streak) {
+        output.push(`- Current Weekly Streak: ${data.weekly_streak} weeks`);
     }
     if (data.max_weekly_streak) {
         output.push(`- Max Weekly Streak: ${data.max_weekly_streak} weeks`);
@@ -1060,15 +1178,20 @@ async function formatKarmaOutput(data, jsonOutput = false) {
             if (day.projects?.length > 0) {
                 // Add life goals summary for the day
                 const { goalStats, totalTasks } = processProjectStats(day.projects);
-                output.push('Life Goals:');
-                for (const [goal, count] of Object.entries(goalStats)) {
-                    const percentage = ((count / totalTasks) * 100).toFixed(1);
-                    output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
+                if (totalTasks > 0) {
+                    output.push('Life Goals:');
+                    for (const [goal, count] of Object.entries(goalStats)) {
+                        const percentage = ((count / totalTasks) * 100).toFixed(1);
+                        output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
+                    }
                 }
                 
                 output.push('\nProjects:');
                 for (const project of day.projects) {
-                    const projectPath = projectCache.get(String(project.id)) || `Unknown Project (${project.id})`;
+                    // Try both v1 and v2 project IDs
+                    const projectPath = projectCache.get(String(project.id)) || 
+                                      (project.v2_id && projectCache.get(project.v2_id)) || 
+                                      `Unknown Project (${project.id})`;
                     output.push(`- ${projectPath}: ${project.completed_count} tasks`);
                 }
             }
@@ -1084,15 +1207,20 @@ async function formatKarmaOutput(data, jsonOutput = false) {
             if (week.projects?.length > 0) {
                 // Add life goals summary for the week
                 const { goalStats, totalTasks } = processProjectStats(week.projects);
-                output.push('Life Goals:');
-                for (const [goal, count] of Object.entries(goalStats)) {
-                    const percentage = ((count / totalTasks) * 100).toFixed(1);
-                    output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
+                if (totalTasks > 0) {
+                    output.push('Life Goals:');
+                    for (const [goal, count] of Object.entries(goalStats)) {
+                        const percentage = ((count / totalTasks) * 100).toFixed(1);
+                        output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
+                    }
                 }
                 
                 output.push('\nProjects:');
                 for (const project of week.projects) {
-                    const projectPath = projectCache.get(String(project.id)) || `Unknown Project (${project.id})`;
+                    // Try both v1 and v2 project IDs
+                    const projectPath = projectCache.get(String(project.id)) || 
+                                      (project.v2_id && projectCache.get(project.v2_id)) || 
+                                      `Unknown Project (${project.id})`;
                     output.push(`- ${projectPath}: ${project.completed_count} tasks`);
                 }
             }

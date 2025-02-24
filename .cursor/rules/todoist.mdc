@@ -31,6 +31,36 @@ All todoist tools are in @tools/todoist.
 - For sections in a project: `node tools/todoist/list.js sections --filter "p:Project Name"`
 - For detailed task info: `node tools/todoist/list.js tasks --taskId <id>`
 
+## Karma and Completion Stats
+
+1. KARMA TRACKING
+   - View basic karma stats: `status.js karma`
+   - Get detailed JSON output: `status.js karma --json`
+   - Monitor daily/weekly goals and streaks
+   - Track life goals distribution in completion stats
+   - Analyze karma trends and updates
+
+2. COMPLETED TASKS ANALYSIS
+   - View all completed tasks: `status.js completed`
+   - Filter by date range: `status.js completed --since "2024-01-01" --until "2024-03-31"`
+   - Filter by project: `status.js completed --projectId <id>`
+   - Get life goals breakdown: `status.js completed --json`
+   - Note: Inbox tasks are excluded from life goals stats
+
+3. LIFE GOALS TRACKING
+   - Life goals are extracted from top-level project names
+   - Monitor task distribution across life areas
+   - Track completion percentages by life goal
+   - Use JSON output for detailed statistics
+   - Regular review of life goals balance
+
+4. BEST PRACTICES
+   - Review karma stats regularly to maintain momentum
+   - Use date filters to analyze specific periods
+   - Monitor life goals distribution for balance
+   - Pay attention to streak information
+   - Use JSON output for data analysis
+
 ## Task Organization
 
 1. DISCOVERY
@@ -38,7 +68,7 @@ All todoist tools are in @tools/todoist.
    - Check existing sections: `list sections --filter "p:Project Name"`
    - Find specific tasks: `find.js "p:Project & search:term"`
    - Analyze tasks for natural groupings
-
+   
 2. SECTION CREATION
    - Create broad, non-overlapping categories
    - Use clear, descriptive section names
