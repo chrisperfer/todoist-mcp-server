@@ -1270,158 +1270,14 @@ async function generateReport() {
 </head>
 <body>
     <div class="card">
-        <h2>🏆 Karma & Goals</h2>
-        <div class="stats-grid">
-            <div class="stat-box">
-                <h3>Current Karma</h3>
-                <p>
-                    ${karmaData.karma}
-                    <span class="trend-indicator ${karmaData.karma_trend?.trend === 'up' ? 'trend-up' : karmaData.karma_trend?.trend === 'down' ? 'trend-down' : 'trend-stable'}">
-                        ${karmaData.karma_trend?.trend === 'up' ? '↑' : karmaData.karma_trend?.trend === 'down' ? '↓' : '→'}
-                        ${karmaData.karma_trend?.karma_inc >= 0 ? '+' : ''}${karmaData.karma_trend?.karma_inc || 0}
-                    </span>
-                </p>
-            </div>
-            <div class="stat-box">
-                <h3>Daily Goal</h3>
-                <p>${karmaData.daily_goal} tasks</p>
-            </div>
-            <div class="stat-box">
-                <h3>Weekly Goal</h3>
-                <p>${karmaData.weekly_goal} tasks</p>
-            </div>
-            <div class="stat-box">
-                <h3>Daily Streak</h3>
-                <p>${karmaData.daily_streak || 0} days</p>
-            </div>
-        </div>
-
-        <div class="stats-grid">
-            <div class="stat-box">
-                <h3>Daily Streak Record</h3>
-                <p>${karmaData.max_daily_streak || 0} days</p>
-            </div>
-            <div class="stat-box">
-                <h3>Weekly Streak</h3>
-                <p>${karmaData.weekly_streak || 0} weeks</p>
-            </div>
-            <div class="stat-box">
-                <h3>Weekly Streak Record</h3>
-                <p>${karmaData.max_weekly_streak || 0} weeks</p>
-            </div>
-            <div class="stat-box">
-                <h3>Total Completed</h3>
-                <p>${karmaData.completed_count || 0} tasks</p>
-            </div>
-        </div>
-
-        <div class="chart-container">
-            <canvas id="karmaHistoryChart"></canvas>
-        </div>
-
-        <h3>Recent Karma Updates</h3>
-        <ul class="karma-updates">
-            ${karmaData.karma_updates?.slice(0, 10).map(update => `
-                <li>
-                    <div>${new Date(update.date).toLocaleDateString()} - 
-                        <span class="karma-value">${update.karma}</span>
-                    </div>
-                    ${update.positive_karma_reasons_detail.map(reason => `
-                        <div class="karma-reason positive">✓ ${reason}</div>
-                    `).join('')}
-                    ${update.negative_karma_reasons_detail.map(reason => `
-                        <div class="karma-reason negative">✗ ${reason}</div>
-                    `).join('')}
-                </li>
-            `).join('')}
-        </ul>
-    </div>
-
-    <div class="card">
-        <h2>📊 Completion Statistics</h2>
-        <div class="stats-grid">
-            <div class="stat-box">
-                <h3>30-Day Total</h3>
-                <p>${completedData.items.length}</p>
-            </div>
-            <div class="stat-box">
-                <h3>Daily Average</h3>
-                <p>${(completedData.items.length / 30).toFixed(1)}</p>
-            </div>
-            <div class="stat-box">
-                <h3>Weekly Average</h3>
-                <p>${((completedData.items.length / 30) * 7).toFixed(1)}</p>
-            </div>
-            <div class="stat-box">
-                <h3>Completion Rate</h3>
-                <p>${((completedData.items.length / (completedData.items.length + allTasks.length)) * 100).toFixed(1)}%</p>
-            </div>
-        </div>
-
-        <div class="chart-container">
-            <canvas id="completionTrendChart"></canvas>
-        </div>
-
-        <div class="chart-container">
-            <canvas id="weeklyComparisonChart"></canvas>
-        </div>
-
-        <h3>Daily Completion Breakdown</h3>
-        <table class="completion-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Completed Tasks</th>
-                    <th>Most Active Project</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${karmaData.days_items?.slice(0, 7).map(day => {
-                    const topProject = day.items?.reduce((a, b) => 
-                        (a.completed > b.completed) ? a : b, { completed: 0 });
-                    return `
-                        <tr>
-                            <td>${new Date(day.date).toLocaleDateString()}</td>
-                            <td>${day.total_completed}</td>
-                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
-                        </tr>
-                    `;
-                }).join('')}
-            </tbody>
-        </table>
-
-        <h3>Weekly Completion Breakdown</h3>
-        <table class="completion-table">
-            <thead>
-                <tr>
-                    <th>Week</th>
-                    <th>Completed Tasks</th>
-                    <th>Most Active Project</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${karmaData.week_items?.slice(0, 4).map(week => {
-                    const topProject = week.items?.reduce((a, b) => 
-                        (a.completed > b.completed) ? a : b, { completed: 0 });
-                    return `
-                        <tr>
-                            <td>${week.date}</td>
-                            <td>${week.total_completed}</td>
-                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
-                        </tr>
-                    `;
-                }).join('')}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="card">
         <h2>🎯 Life Goals Distribution</h2>
-        <div class="chart-container">
-            <canvas id="lifeGoalsChart"></canvas>
-        </div>
-        <div class="chart-container" style="height: 500px;">
-            <canvas id="lifeGoalsRadarChart"></canvas>
+        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+            <div class="chart-container" style="flex: 1; min-width: 300px;">
+                <canvas id="lifeGoalsChart"></canvas>
+            </div>
+            <div class="chart-container" style="flex: 1; min-width: 300px;">
+                <canvas id="lifeGoalsRadarChart"></canvas>
+            </div>
         </div>
     </div>
 
@@ -1483,6 +1339,124 @@ async function generateReport() {
     </div>
 
     <div class="card">
+        <h2>🏆 Karma & Productivity</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>Current Karma</h3>
+                <p>
+                    ${karmaData.karma}
+                    <span class="trend-indicator ${karmaData.karma_trend?.trend === 'up' ? 'trend-up' : karmaData.karma_trend?.trend === 'down' ? 'trend-down' : 'trend-stable'}">
+                        ${karmaData.karma_trend?.trend === 'up' ? '↑' : karmaData.karma_trend?.trend === 'down' ? '↓' : '→'}
+                        ${karmaData.karma_trend?.karma_inc >= 0 ? '+' : ''}${karmaData.karma_trend?.karma_inc || 0}
+                    </span>
+                </p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Goal</h3>
+                <p>${karmaData.daily_goal} tasks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Goal</h3>
+                <p>${karmaData.weekly_goal} tasks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Streak</h3>
+                <p>${karmaData.daily_streak || 0} days</p>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>Daily Streak Record</h3>
+                <p>${karmaData.max_daily_streak || 0} days</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Streak</h3>
+                <p>${karmaData.weekly_streak || 0} weeks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Streak Record</h3>
+                <p>${karmaData.max_weekly_streak || 0} weeks</p>
+            </div>
+            <div class="stat-box">
+                <h3>30-Day Completion Rate</h3>
+                <p>${((completedData.items.length / (completedData.items.length + allTasks.length)) * 100).toFixed(1)}%</p>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>30-Day Total</h3>
+                <p>${completedData.items.length}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Average</h3>
+                <p>${(completedData.items.length / 30).toFixed(1)}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Average</h3>
+                <p>${((completedData.items.length / 30) * 7).toFixed(1)}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Total Completed</h3>
+                <p>${karmaData.completed_count || 0} tasks</p>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="karmaHistoryChart"></canvas>
+        </div>
+
+        <h3>Daily Completion Breakdown</h3>
+        <table class="completion-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Completed Tasks</th>
+                    <th>Most Active Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${karmaData.days_items?.slice(0, 7).map(day => {
+                    const topProject = day.items?.reduce((a, b) => 
+                        (a.completed > b.completed) ? a : b, { completed: 0 });
+                    return `
+                        <tr>
+                            <td>${new Date(day.date).toLocaleDateString()}</td>
+                            <td>${day.total_completed}</td>
+                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+
+        <h3>Weekly Completion Breakdown</h3>
+        <table class="completion-table">
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Completed Tasks</th>
+                    <th>Most Active Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${karmaData.week_items?.slice(0, 4).map(week => {
+                    const topProject = week.items?.reduce((a, b) => 
+                        (a.completed > b.completed) ? a : b, { completed: 0 });
+                    return `
+                        <tr>
+                            <td>${week.date}</td>
+                            <td>${week.total_completed}</td>
+                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
         <h2>📈 Project Activity (30 Days)</h2>
         <div class="chart-container">
             <canvas id="projectActivityChart"></canvas>
@@ -1537,7 +1511,7 @@ async function generateReport() {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Life Goals Distribution (Bar Chart)'
+                        text: 'Life Goals Distribution'
                     }
                 }
             }
@@ -1606,7 +1580,7 @@ async function generateReport() {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Life Goals Balance (Radar Chart)',
+                        text: 'Life Goals Balance',
                         font: {
                             size: 20,
                             weight: 'bold'
@@ -1664,7 +1638,27 @@ async function generateReport() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Task Health Distribution',
+                        font: {
+                            size: 20,
+                            weight: 'bold'
+                        },
+                        padding: 20
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: {
+                                size: 14
+                            },
+                            padding: 20
+                        }
+                    }
+                }
             }
         });
 
@@ -1687,6 +1681,17 @@ async function generateReport() {
                 scales: {
                     y: {
                         beginAtZero: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Most Active Projects (30 Days)',
+                        font: {
+                            size: 20,
+                            weight: 'bold'
+                        },
+                        padding: 20
                     }
                 }
             }
@@ -1762,7 +1767,21 @@ async function generateReport() {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Daily Task Completion & Karma History'
+                        text: 'Daily Task Completion & Karma History',
+                        font: {
+                            size: 20,
+                            weight: 'bold'
+                        },
+                        padding: 20
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: {
+                                size: 14
+                            },
+                            padding: 20
+                        }
                     }
                 }
             }
@@ -2217,4 +2236,5 @@ async function getAllEventsForTask(taskId) {
     return allEvents;
 }
 
+main().catch(console.error); 
 main().catch(console.error); 
