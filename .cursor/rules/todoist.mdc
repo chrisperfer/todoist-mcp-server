@@ -1,6 +1,7 @@
 ---
 description: run todoist tools
 globs: *.*
+alwaysApply: false
 ---
 # Tools
 All todoist tools are in @tools/todoist.

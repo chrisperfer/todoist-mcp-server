@@ -1271,11 +1271,11 @@ async function generateReport() {
 <body>
     <div class="card">
         <h2>🎯 Life Goals Distribution</h2>
-        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
-            <div class="chart-container" style="flex: 1; min-width: 300px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 30px; align-items: flex-start;">
+            <div class="chart-container" style="flex: 3; min-width: 400px; height: 400px; padding-top: 20px;">
                 <canvas id="lifeGoalsChart"></canvas>
             </div>
-            <div class="chart-container" style="flex: 1; min-width: 300px;">
+            <div class="chart-container" style="flex: 2; min-width: 350px; height: 400px; background: rgba(255,255,255,0.8); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
                 <canvas id="lifeGoalsRadarChart"></canvas>
             </div>
         </div>
@@ -1502,16 +1502,44 @@ async function generateReport() {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        stacked: true
+                        stacked: true,
+                        ticks: {
+                            font: {
+                                size: 12
+                            }
+                        }
                     },
                     x: {
-                        stacked: true
+                        stacked: true,
+                        ticks: {
+                            font: {
+                                size: 13,
+                                weight: '500'
+                            }
+                        }
                     }
                 },
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Life Goals Distribution'
+                        text: 'Life Goals Distribution',
+                        font: {
+                            size: 18,
+                            weight: 'bold'
+                        },
+                        padding: {
+                            top: 0,
+                            bottom: 20
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: {
+                                size: 13
+                            },
+                            padding: 15
+                        }
                     }
                 }
             }
@@ -1527,25 +1555,25 @@ async function generateReport() {
                     data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.total))},
                     backgroundColor: 'rgba(54, 162, 235, 0.3)',
                     borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 3,
+                    borderWidth: 2,
                     pointBackgroundColor: 'rgba(54, 162, 235, 1)',
                     pointBorderColor: '#fff',
                     pointHoverBackgroundColor: '#fff',
                     pointHoverBorderColor: 'rgba(54, 162, 235, 1)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }, {
                     label: 'Completed Tasks',
                     data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.completed))},
                     backgroundColor: 'rgba(75, 192, 192, 0.3)',
                     borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 3,
+                    borderWidth: 2,
                     pointBackgroundColor: 'rgba(75, 192, 192, 1)',
                     pointBorderColor: '#fff',
                     pointHoverBackgroundColor: '#fff',
                     pointHoverBorderColor: 'rgba(75, 192, 192, 1)',
-                    pointRadius: 6,
-                    pointHoverRadius: 8
+                    pointRadius: 4,
+                    pointHoverRadius: 6
                 }]
             },
             options: {
@@ -1557,23 +1585,26 @@ async function generateReport() {
                         angleLines: {
                             display: true,
                             color: 'rgba(0, 0, 0, 0.2)',
-                            lineWidth: 2
+                            lineWidth: 1
                         },
                         grid: {
-                            color: 'rgba(0, 0, 0, 0.2)',
-                            lineWidth: 2
+                            color: 'rgba(0, 0, 0, 0.15)',
+                            lineWidth: 1
                         },
                         ticks: {
                             backdropColor: 'transparent',
                             font: {
-                                size: 14
-                            }
+                                size: 11
+                            },
+                            showLabelBackdrop: false,
+                            maxTicksLimit: 5
                         },
                         pointLabels: {
                             font: {
-                                size: 16,
-                                weight: 'bold'
-                            }
+                                size: 14,
+                                weight: '600'
+                            },
+                            padding: 8
                         }
                     }
                 },
@@ -1582,28 +1613,33 @@ async function generateReport() {
                         display: true,
                         text: 'Life Goals Balance',
                         font: {
-                            size: 20,
+                            size: 18,
                             weight: 'bold'
                         },
-                        padding: 20
+                        padding: {
+                            top: 0,
+                            bottom: 20
+                        }
                     },
                     legend: {
                         position: 'bottom',
                         labels: {
                             font: {
-                                size: 14
+                                size: 13
                             },
-                            padding: 20
+                            padding: 15,
+                            boxWidth: 30
                         }
                     },
                     tooltip: {
                         titleFont: {
-                            size: 16
-                        },
-                        bodyFont: {
                             size: 14
                         },
-                        padding: 12
+                        bodyFont: {
+                            size: 13
+                        },
+                        padding: 10,
+                        displayColors: true
                     }
                 }
             }
