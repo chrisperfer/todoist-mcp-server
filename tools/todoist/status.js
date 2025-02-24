@@ -45,118 +45,132 @@ const KARMA_REASON_CODES = {
     '52': 'Inactive for a longer period of time'
 };
 
-function cleanEventData(event, removeParentId = false) {
+function cleanEventData(event, stringifyIds = false) {
     if (!event) return null;
-
-    // Skip non-essential updates
-    if (event.event_type === 'updated') {
-        const hasSignificantChange = event.extra_data && (
-            event.extra_data.due_date !== event.extra_data.last_due_date || // Due date changed
-            event.extra_data.last_content !== undefined || // Content changed
-            event.extra_data.last_priority !== undefined || // Priority changed
-            event.extra_data.last_section_id !== undefined || // Section changed
-            event.extra_data.last_parent_id !== undefined // Parent changed
-        );
-        if (!hasSignificantChange) return null;
-    }
-
-    // Create a new object with only the fields we want
-    const cleaned = {
+    
+    const cleanedEvent = {
         event_type: event.event_type,
         object_type: event.object_type,
-        object_id: String(event.object_id),
+        object_id: stringifyIds ? String(event.object_id) : event.object_id,
         event_date: event.event_date
     };
 
-    // Only include parent IDs if they're not redundant due to nesting
-    if (!removeParentId) {
-        if (event.parent_project_id) cleaned.parent_project_id = String(event.parent_project_id);
-        if (event.parent_id) cleaned.parent_id = String(event.parent_id);
+    if (event.parent_project_id) {
+        cleanedEvent.parent_project_id = stringifyIds ? String(event.parent_project_id) : event.parent_project_id;
     }
 
-    // Include all extra_data fields for health calculations
+    if (event.parent_id) {
+        cleanedEvent.parent_id = stringifyIds ? String(event.parent_id) : event.parent_id;
+    }
+
     if (event.extra_data) {
-        cleaned.extra_data = { ...event.extra_data };
-        // Convert IDs to strings
-        if (cleaned.extra_data.section_id) cleaned.extra_data.section_id = String(cleaned.extra_data.section_id);
-        if (cleaned.extra_data.parent_id) cleaned.extra_data.parent_id = String(cleaned.extra_data.parent_id);
-        // Only filter out v2_ fields that aren't needed
-        Object.keys(cleaned.extra_data).forEach(key => {
-            if (key.startsWith('v2_') && !['due_date', 'last_due_date', 'content'].includes(key)) {
-                delete cleaned.extra_data[key];
+        cleanedEvent.extra_data = { ...event.extra_data };
+        if (stringifyIds) {
+            if (cleanedEvent.extra_data.section_id) {
+                cleanedEvent.extra_data.section_id = String(cleanedEvent.extra_data.section_id);
             }
-        });
+            if (cleanedEvent.extra_data.parent_id) {
+                cleanedEvent.extra_data.parent_id = String(cleanedEvent.extra_data.parent_id);
+            }
+        }
     }
 
-    return cleaned;
+    return cleanedEvent;
 }
 
 // Calculate health indicators for an item based on its events
 function calculateHealthIndicators(events) {
     if (!events || events.length === 0) return null;
-    
-    const now = new Date('2025-02-23T00:00:00.000Z'); // Fixed date for testing
-    const indicators = {
-        last_activity_days: 0,
-        due_date_changes: 0,
-        total_postponed_days: 0
-    };
 
-    // Sort events by date
-    events.sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+    // Sort events by date, newest first
+    const sortedEvents = [...events].sort((a, b) => 
+        new Date(b.event_date) - new Date(a.event_date)
+    );
 
-    // Calculate days since last activity
-    const lastEventDate = new Date(events[events.length - 1].event_date);
-    indicators.last_activity_days = Math.floor((now - lastEventDate) / (1000 * 60 * 60 * 24));
+    const now = new Date();
+    const lastEventDate = new Date(sortedEvents[0].event_date);
+    const lastActivityDays = Math.floor((now - lastEventDate) / (1000 * 60 * 60 * 24));
 
-    // Track due date changes
-    let lastDueDate = null;
-    events.forEach(event => {
-        const dueDate = event.extra_data?.due_date;
-        if (dueDate) {
-            if (lastDueDate) {
-                const oldDate = new Date(lastDueDate);
-                const newDate = new Date(dueDate);
-                if (newDate > oldDate) {
-                    indicators.due_date_changes++;
-                    indicators.total_postponed_days += Math.floor((newDate - oldDate) / (1000 * 60 * 60 * 24));
+    let dueDateChanges = 0;
+    let totalPostponedDays = 0;
+    let consecutivePostpones = 0;
+    let maxConsecutivePostpones = 0;
+    let lastPostponeDate = null;
+
+    // Track due date changes and postponements
+    for (let i = 0; i < sortedEvents.length; i++) {
+        const event = sortedEvents[i];
+        if (event.event_type === 'updated' && event.extra_data) {
+            const { due_date, last_due_date } = event.extra_data;
+            
+            if (due_date && last_due_date) {
+                const dueDate = new Date(due_date);
+                const lastDueDate = new Date(last_due_date);
+                
+                if (dueDate > lastDueDate) {
+                    dueDateChanges++;
+                    const postponeDays = Math.floor((dueDate - lastDueDate) / (1000 * 60 * 60 * 24));
+                    totalPostponedDays += postponeDays;
+
+                    // Check if this is a consecutive postpone (within 24 hours of last postpone)
+                    const eventDate = new Date(event.event_date);
+                    if (lastPostponeDate && (eventDate - lastPostponeDate) <= (24 * 60 * 60 * 1000)) {
+                        consecutivePostpones++;
+                        maxConsecutivePostpones = Math.max(maxConsecutivePostpones, consecutivePostpones);
+                    } else {
+                        consecutivePostpones = 1;
+                    }
+                    lastPostponeDate = eventDate;
                 }
             }
-            lastDueDate = dueDate;
-        }
-    });
-
-    // Add health status based on indicators
-    indicators.health_status = [];
-    
-    if (indicators.last_activity_days > 30) {
-        indicators.health_status.push(`idle_${indicators.last_activity_days > 90 ? 'critical' : 'warning'}`);
-    }
-    
-    if (indicators.due_date_changes > 0) {
-        const avgPostponeDays = Math.floor(indicators.total_postponed_days / indicators.due_date_changes);
-        if (avgPostponeDays > 7) {
-            indicators.health_status.push(`procrastination_${avgPostponeDays > 30 ? 'critical' : 'warning'}`);
         }
     }
 
-    return indicators;
+    // Calculate average postpone days
+    const avgPostponeDays = dueDateChanges > 0 ? totalPostponedDays / dueDateChanges : 0;
+
+    // Initialize health status array
+    const healthStatus = [];
+
+    // Add warnings based on metrics
+    if (lastActivityDays > 7) {
+        healthStatus.push('idle');
+    }
+
+    if (dueDateChanges > 0) {
+        if (avgPostponeDays >= 7) {
+            healthStatus.push('long_postpones');
+        }
+        if (maxConsecutivePostpones >= 3) {
+            healthStatus.push('frequent_postpones');
+        }
+    }
+
+    return {
+        last_activity_days: lastActivityDays,
+        due_date_changes: dueDateChanges,
+        total_postponed_days: totalPostponedDays,
+        avg_postpone_days: avgPostponeDays,
+        max_consecutive_postpones: maxConsecutivePostpones,
+        health_status: healthStatus
+    };
 }
 
 // Add health indicators to an item structure
-function addHealthIndicators(itemStructure) {
+async function addHealthIndicators(itemStructure) {
     if (!itemStructure) return itemStructure;
 
-    // Add health indicators to the current item
-    if (itemStructure.item_events && itemStructure.item_events.length > 0) {
-        itemStructure.health = calculateHealthIndicators(itemStructure.item_events);
+    // Add health indicators to the current item if it has events
+    if (itemStructure.item_events?.length > 0) {
+        const healthIndicators = calculateHealthIndicators(itemStructure.item_events);
+        itemStructure.health = healthIndicators;
     }
 
     // Recursively add health indicators to sub-items
     if (itemStructure.sub_items) {
-        Object.values(itemStructure.sub_items).forEach(subItem => {
-            addHealthIndicators(subItem);
-        });
+        for (const subItem of Object.values(itemStructure.sub_items)) {
+            if (subItem) await addHealthIndicators(subItem);
+        }
     }
 
     return itemStructure;
@@ -247,13 +261,11 @@ async function getTaskHierarchy(projectId = null) {
 async function groupActivities(events, projectId = null) {
     const groups = {
         projects: {},
-        other_events: []
+        other_events: [],
+        total_count: events.length
     };
 
     if (!events) return groups;
-
-    // Get task hierarchy first
-    const hierarchy = await getTaskHierarchy(projectId);
 
     // First pass: Create project structure and collect project events
     events.forEach(event => {
@@ -328,46 +340,6 @@ async function groupActivities(events, projectId = null) {
         sub_items: {}
     });
 
-    // Helper function to get or create item structure in the correct location
-    const getOrCreateItemStructure = (project, itemId) => {
-        const taskDetails = hierarchy?.byId.get(itemId);
-        if (!taskDetails) {
-            // If we don't have task details, create it at the project level
-            if (!project.items[itemId]) {
-                project.items[itemId] = createItemStructure();
-            }
-            return project.items[itemId];
-        }
-
-        const sectionId = taskDetails.section_id ? String(taskDetails.section_id) : null;
-        const parentId = taskDetails.parent_id ? String(taskDetails.parent_id) : null;
-
-        // If this is a sub-item, recursively get its parent's structure first
-        if (parentId) {
-            const parentStructure = getOrCreateItemStructure(project, parentId);
-            if (parentStructure) {
-                if (!parentStructure.sub_items[itemId]) {
-                    parentStructure.sub_items[itemId] = createItemStructure();
-                }
-                return parentStructure.sub_items[itemId];
-            }
-        }
-
-        // If it belongs to a section
-        if (sectionId && project.sections[sectionId]) {
-            if (!project.sections[sectionId].items[itemId]) {
-                project.sections[sectionId].items[itemId] = createItemStructure();
-            }
-            return project.sections[sectionId].items[itemId];
-        }
-
-        // Otherwise, it belongs directly to the project
-        if (!project.items[itemId]) {
-            project.items[itemId] = createItemStructure();
-        }
-        return project.items[itemId];
-    };
-
     // Third pass: Handle sections, items, and comments
     for (const event of events) {
         if (event.object_type === 'section') {
@@ -391,15 +363,12 @@ async function groupActivities(events, projectId = null) {
             
             if (project) {
                 const itemId = String(event.object_id);
-                const itemStructure = getOrCreateItemStructure(project, itemId);
+                const itemStructure = project.items[itemId] || createItemStructure();
+                project.items[itemId] = itemStructure;
                 
-                if (itemStructure) {
-                    const cleanedEvent = cleanEventData(event, true);
-                    if (cleanedEvent) {
-                        itemStructure.item_events.push(cleanedEvent);
-                    }
-                } else {
-                    groups.other_events.push(cleanEventData(event));
+                const cleanedEvent = cleanEventData(event, true);
+                if (cleanedEvent) {
+                    itemStructure.item_events.push(cleanedEvent);
                 }
             } else {
                 groups.other_events.push(cleanEventData(event));
@@ -412,12 +381,9 @@ async function groupActivities(events, projectId = null) {
                 const parentId = event.parent_id ? String(event.parent_id) : null;
                 if (parentId) {
                     // Comment belongs to an item
-                    const itemStructure = getOrCreateItemStructure(project, parentId);
-                    if (itemStructure) {
-                        itemStructure.comments.push(cleanEventData(event, true));
-                    } else {
-                        groups.other_events.push(cleanEventData(event));
-                    }
+                    const itemStructure = project.items[parentId] || createItemStructure();
+                    project.items[parentId] = itemStructure;
+                    itemStructure.comments.push(cleanEventData(event, true));
                 } else {
                     // Comment belongs to the project
                     project.comments.push(cleanEventData(event, true));
@@ -430,80 +396,43 @@ async function groupActivities(events, projectId = null) {
         }
     }
 
-    // After all items are grouped, add health indicators
-    Object.values(groups.projects).forEach(project => {
-        // Add health indicators to direct items
-        Object.keys(project.items).forEach(itemId => {
-            project.items[itemId] = addHealthIndicators(project.items[itemId]);
-        });
-
-        // Add health indicators to items in sections
-        Object.values(project.sections).forEach(section => {
-            Object.keys(section.items).forEach(itemId => {
-                section.items[itemId] = addHealthIndicators(section.items[itemId]);
-            });
-        });
-
-        // Add health indicators to items in child projects
-        Object.values(project.child_projects).forEach(childProject => {
-            Object.keys(childProject.items).forEach(itemId => {
-                childProject.items[itemId] = addHealthIndicators(childProject.items[itemId]);
-            });
-            
-            Object.values(childProject.sections).forEach(section => {
-                Object.keys(section.items).forEach(itemId => {
-                    section.items[itemId] = addHealthIndicators(section.items[itemId]);
-                });
-            });
-        });
-    });
-
     return groups;
 }
 
-function addHealthIndicatorsToJson(structure) {
-    // Process each project's items
-    Object.values(structure.projects).forEach(project => {
+async function addHealthIndicatorsToJson(structure) {
+    if (!structure?.projects) return structure;
+
+    // Process each project
+    for (const project of Object.values(structure.projects)) {
         // Process direct items
-        Object.values(project.items).forEach(item => {
-            if (item.item_events && item.item_events.length > 0) {
-                item.health = calculateHealthIndicators(item.item_events);
+        if (project.items) {
+            for (const item of Object.values(project.items)) {
+                if (item.item_events?.length > 0) {
+                    const healthIndicators = calculateHealthIndicators(item.item_events);
+                    item.health = healthIndicators;
+                }
             }
-            // Process sub-items recursively
-            if (item.sub_items) {
-                Object.values(item.sub_items).forEach(subItem => {
-                    if (subItem.item_events && subItem.item_events.length > 0) {
-                        subItem.health = calculateHealthIndicators(subItem.item_events);
-                    }
-                });
-            }
-        });
+        }
 
         // Process items in sections
-        Object.values(project.sections).forEach(section => {
-            Object.values(section.items).forEach(item => {
-                if (item.item_events && item.item_events.length > 0) {
-                    item.health = calculateHealthIndicators(item.item_events);
-                }
-                // Process sub-items recursively
-                if (item.sub_items) {
-                    Object.values(item.sub_items).forEach(subItem => {
-                        if (subItem.item_events && subItem.item_events.length > 0) {
-                            subItem.health = calculateHealthIndicators(subItem.item_events);
+        if (project.sections) {
+            for (const section of Object.values(project.sections)) {
+                if (section.items) {
+                    for (const item of Object.values(section.items)) {
+                        if (item.item_events?.length > 0) {
+                            const healthIndicators = calculateHealthIndicators(item.item_events);
+                            item.health = healthIndicators;
                         }
-                    });
+                    }
                 }
-            });
-        });
-
-        // Process items in child projects recursively
-        if (project.child_projects) {
-            Object.values(project.child_projects).forEach(childProject => {
-                // Recursively process the child project
-                addHealthIndicatorsToJson({ projects: { dummy: childProject } });
-            });
+            }
         }
-    });
+
+        // Process child projects recursively
+        if (project.child_projects) {
+            await addHealthIndicatorsToJson({ projects: project.child_projects });
+        }
+    }
 
     return structure;
 }
@@ -536,6 +465,24 @@ function formatTextOutput(jsonData) {
             const indent = ' '.repeat(baseIndent);
             itemOutput.push(`\n${indent}Item ${itemId}:`);
             
+            // Display health indicators prominently at the top
+            if (item.health) {
+                if (item.health.health_status?.length > 0) {
+                    itemOutput.push(`${indent}  ⚠️ Health Status: ${item.health.health_status.join(', ')}`);
+                }
+                if (item.health.last_activity_days !== undefined) {
+                    itemOutput.push(`${indent}  📅 Last Activity: ${item.health.last_activity_days} days ago`);
+                }
+                if (item.health.due_date_changes > 0) {
+                    itemOutput.push(`${indent}  🔄 Due Date Changes: ${item.health.due_date_changes}`);
+                    itemOutput.push(`${indent}  ⏰ Average Postpone: ${Math.round(item.health.avg_postpone_days)} days`);
+                    if (item.health.max_consecutive_postpones > 1) {
+                        itemOutput.push(`${indent}  📊 Max Consecutive Postpones: ${item.health.max_consecutive_postpones}`);
+                    }
+                }
+                itemOutput.push(''); // Add a blank line for readability
+            }
+            
             // Events
             if (item.item_events) {
                 item.item_events.forEach(event => {
@@ -543,10 +490,6 @@ function formatTextOutput(jsonData) {
                     if (formattedEvent) itemOutput.push(formattedEvent);
                 });
             }
-
-            // Health
-            const health = formatHealth(item.health, baseIndent + 2);
-            if (health) itemOutput.push(health);
 
             // Comments
             if (item.comments?.length > 0) {
@@ -571,7 +514,8 @@ function formatTextOutput(jsonData) {
         const projectOutput = [];
         const indent = ' '.repeat(depth * 2);
         const header = depth === 0 ? '===' : '='.repeat(3 + depth);
-        projectOutput.push(`\n${header} Project ${projectId} ${header}`);
+        const projectName = projectCache.get(String(projectId)) || `Project ${projectId}`;
+        projectOutput.push(`\n${header} ${projectName} ${header}`);
 
         // Project Events
         if (project.project_events?.length > 0) {
@@ -759,7 +703,6 @@ async function getCompleted(options = {}) {
     }
 
     const data = await response.json();
-    console.log('Completed tasks response:', JSON.stringify(data, null, 2));
     return {
         items: data.items || [],
         projects: data.projects || {},
@@ -780,6 +723,7 @@ async function getKarmaStats() {
     }
 
     const data = await response.json();
+    console.log('Raw API Response:', JSON.stringify(data, null, 2));
     
     if (!data) {
         throw new Error('No karma stats found in response');
@@ -813,46 +757,28 @@ async function getKarmaStats() {
             positive_karma_reasons_detail: update.positive_karma_reasons.map(code => KARMA_REASON_CODES[String(code)]),
             negative_karma_reasons_detail: update.negative_karma_reasons.map(code => KARMA_REASON_CODES[String(code)])
         })) || [],
-        daily_stats: data.days_items?.map(day => ({
-            date: day.date,
-            total_completed: day.total_completed,
-            projects: day.items?.map(item => ({
-                id: item.id,
-                completed_count: item.completed
-            }))
-        })) || [],
-        weekly_stats: data.week_items?.map(week => ({
-            week: week.from,
-            total_completed: week.total_completed,
-            projects: week.items?.map(item => ({
-                id: item.id,
-                completed_count: item.completed
-            }))
-        })) || []
+        karma_graph_data: data.karma_graph_data || [],
+        days_items: data.days_items || [],
+        week_items: data.week_items || []
     };
 }
 
-// Add function to fetch all projects once
+// Add function to fetch all projects at once
 async function fetchAndCacheProjects(api) {
     if (projectCache.size > 0) return; // Already cached
 
     try {
-        // Get all projects using the sync API
-        const response = await fetch('https://api.todoist.com/sync/v9/sync', {
-            method: 'POST',
+        const response = await fetch(`${REST_API_URL}/projects`, {
             headers: {
-                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`,
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'sync_token=*&resource_types=["projects"]'
+                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+            }
         });
 
         if (!response.ok) {
             throw new Error(`Failed to fetch projects: ${response.status} ${response.statusText}`);
         }
 
-        const data = await response.json();
-        const projects = data.projects || [];
+        const projects = await response.json();
         
         // Build path cache for each project
         for (const project of projects) {
@@ -867,150 +793,41 @@ async function fetchAndCacheProjects(api) {
                 currentProject = parent;
             }
             
-            // Cache both v1 and v2 IDs
             projectCache.set(String(project.id), path);
-            if (project.v2_id) {
-                projectCache.set(project.v2_id, path);
-            }
-        }
-
-        // Get completed tasks to find any missing project paths
-        const completedResponse = await fetch(SYNC_COMPLETED_URL, {
-            headers: {
-                'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
-            }
-        });
-
-        if (completedResponse.ok) {
-            const completedData = await completedResponse.json();
-            const items = completedData.items || [];
-
-            // Group completed items by project ID
-            const itemsByProject = {};
-            items.forEach(item => {
-                if (!itemsByProject[item.project_id]) {
-                    itemsByProject[item.project_id] = [];
-                }
-                itemsByProject[item.project_id].push(item);
-            });
-
-            // For each project that's not in our cache, use the first item's project path
-            Object.entries(itemsByProject).forEach(([projectId, items]) => {
-                if (!projectCache.has(String(projectId)) && items.length > 0) {
-                    const firstItem = items[0];
-                    // Try to extract project path from the first item
-                    const projectPath = firstItem.project || `Unknown Project (${projectId})`;
-                    if (!projectPath.startsWith('Unknown Project')) {
-                        projectCache.set(String(projectId), projectPath);
-                        if (firstItem.v2_project_id) {
-                            projectCache.set(firstItem.v2_project_id, projectPath);
-                        }
-                    }
-                }
-            });
         }
     } catch (error) {
         console.error('Error fetching projects:', error.message);
     }
 }
 
-// Add function to extract life goal from project path
-function extractLifeGoal(projectPath) {
-    if (!projectPath) return null;
-    // Handle Inbox specially
-    if (projectPath === 'Inbox') return 'Inbox';
-    
-    // Get the first part of the path (before any '>')
-    const topLevel = projectPath.split('>')[0].trim();
-    
-    // Extract the emoji and name
-    const match = topLevel.match(/^([\u{1F300}-\u{1F9FF}]|[\u{1F600}-\u{1F64F}]|[\u{2600}-\u{26FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1F1E6}-\u{1F1FF}]){1,2}(.+)$/u);
-    if (match) {
-        return match[2].trim(); // Return the name without emoji
-    }
-    return topLevel;
-}
-
-// Add before formatCompletedOutput
+// Update formatCompletedOutput to use the cache
 async function formatCompletedOutput(data, jsonOutput = false) {
     const api = await initializeApi();
     await fetchAndCacheProjects(api);
 
     const formattedItems = data.items.map(item => {
-        // Try both v1 and v2 project IDs
-        const projectPath = projectCache.get(String(item.project_id)) || 
-                          projectCache.get(item.v2_project_id) || 
-                          `Unknown Project (${item.project_id})`;
+        const projectPath = projectCache.get(String(item.project_id)) || `Unknown Project (${item.project_id})`;
         return {
             content: item.content,
             project: projectPath,
-            life_goal: extractLifeGoal(projectPath),
             completed_at: item.completed_at
         };
     });
 
     if (jsonOutput) {
-        // Calculate life goals statistics
-        const goalStats = {};
-        let totalTasks = 0;
-        
-        formattedItems.forEach(item => {
-            if (item.life_goal && item.life_goal !== 'Inbox') {
-                if (!goalStats[item.life_goal]) {
-                    goalStats[item.life_goal] = { count: 0 };
-                }
-                goalStats[item.life_goal].count++;
-                totalTasks++;
-            }
-        });
-        
-        // Add percentages
-        Object.values(goalStats).forEach(stats => {
-            stats.percentage = totalTasks > 0 ? (stats.count / totalTasks) * 100 : 0;
-        });
-        
-        return JSON.stringify({
-            life_goals_summary: {
-                stats: goalStats,
-                total_tasks: totalTasks
-            },
-            items: formattedItems
-        }, null, 2);
+        return JSON.stringify(formattedItems, null, 2);
     }
 
     let output = [];
 
     // Group items by project
     const itemsByProject = {};
-    const goalStats = {};
-    
     formattedItems.forEach(item => {
-        // Group by project
         if (!itemsByProject[item.project]) {
             itemsByProject[item.project] = [];
         }
         itemsByProject[item.project].push(item);
-        
-        // Track goal statistics (excluding Inbox)
-        if (item.life_goal && item.life_goal !== 'Inbox') {
-            if (!goalStats[item.life_goal]) {
-                goalStats[item.life_goal] = 0;
-            }
-            goalStats[item.life_goal]++;
-        }
     });
-
-    // Output goal summary first
-    output.push('=== Life Goals Summary ===\n');
-    const totalTasks = Object.values(goalStats).reduce((sum, count) => sum + count, 0);
-    if (totalTasks > 0) {
-        for (const [goal, count] of Object.entries(goalStats)) {
-            const percentage = ((count / totalTasks) * 100).toFixed(1);
-            output.push(`${goal}: ${count} tasks (${percentage}%)`);
-        }
-    } else {
-        output.push('No tasks completed for life goals');
-    }
 
     // Output items grouped by project
     for (const [projectName, projectItems] of Object.entries(itemsByProject)) {
@@ -1024,44 +841,11 @@ async function formatCompletedOutput(data, jsonOutput = false) {
     return output.join('\n');
 }
 
-// Update formatKarmaOutput to include life goals statistics
+// Update formatKarmaOutput to handle all karma information
 async function formatKarmaOutput(data, jsonOutput = false) {
     const api = await initializeApi();
     await fetchAndCacheProjects(api);
-    
-    // Helper function to process project stats with life goals
-    const processProjectStats = (projects) => {
-        const goalStats = {};
-        let totalTasks = 0;
-        
-        projects.forEach(project => {
-            // Try both v1 and v2 project IDs
-            const projectPath = projectCache.get(String(project.id)) || 
-                              (project.v2_id && projectCache.get(project.v2_id)) || 
-                              `Unknown Project (${project.id})`;
-            const lifeGoal = extractLifeGoal(projectPath);
-            const count = project.completed_count;
-            
-            // Only include non-Inbox goals
-            if (lifeGoal && lifeGoal !== 'Inbox') {
-                goalStats[lifeGoal] = (goalStats[lifeGoal] || 0) + count;
-                totalTasks += count;
-            }
-        });
-        
-        // Convert to percentage format for JSON output
-        const goalStatsWithPercentage = {};
-        Object.entries(goalStats).forEach(([goal, count]) => {
-            goalStatsWithPercentage[goal] = {
-                count,
-                percentage: totalTasks > 0 ? (count / totalTasks) * 100 : 0
-            };
-        });
-        
-        return { goalStats: goalStatsWithPercentage, totalTasks };
-    };
 
-    // Add life goals stats to the formatted data
     const formattedStats = {
         karma: data.karma,
         today: {
@@ -1079,47 +863,15 @@ async function formatKarmaOutput(data, jsonOutput = false) {
         },
         streaks: {
             daily: {
-                current: data.daily_streak,
+                current: data.current_daily_streak,
                 max: data.max_daily_streak
             },
             weekly: {
-                current: data.weekly_streak,
+                current: data.current_weekly_streak,
                 max: data.max_weekly_streak
             }
         },
-        karma_updates: data.karma_updates || [],
-        daily_stats: data.daily_stats?.map(day => {
-            const { goalStats, totalTasks } = processProjectStats(day.projects || []);
-            return {
-                date: day.date,
-                total_completed: day.total_completed,
-                life_goals: goalStats,
-                total_life_goals_tasks: totalTasks,
-                projects: day.projects?.map(project => ({
-                    id: project.id,
-                    path: projectCache.get(String(project.id)) || 
-                          (project.v2_id && projectCache.get(project.v2_id)) || 
-                          `Unknown Project (${project.id})`,
-                    completed_count: project.completed_count
-                }))
-            };
-        }) || [],
-        weekly_stats: data.weekly_stats?.map(week => {
-            const { goalStats, totalTasks } = processProjectStats(week.projects || []);
-            return {
-                week: week.week,
-                total_completed: week.total_completed,
-                life_goals: goalStats,
-                total_life_goals_tasks: totalTasks,
-                projects: week.projects?.map(project => ({
-                    id: project.id,
-                    path: projectCache.get(String(project.id)) || 
-                          (project.v2_id && projectCache.get(project.v2_id)) || 
-                          `Unknown Project (${project.id})`,
-                    completed_count: project.completed_count
-                }))
-            };
-        }) || []
+        karma_updates: data.karma_updates || []
     };
 
     if (jsonOutput) {
@@ -1141,14 +893,14 @@ async function formatKarmaOutput(data, jsonOutput = false) {
     output.push(`Ignored Days: ${data.ignored_days.join(', ')}`);
 
     output.push('\nStreaks:');
-    if (data.daily_streak) {
-        output.push(`- Current Daily Streak: ${data.daily_streak} days`);
+    if (data.current_daily_streak) {
+        output.push(`- Current Daily Streak: ${data.current_daily_streak} days`);
     }
     if (data.max_daily_streak) {
         output.push(`- Max Daily Streak: ${data.max_daily_streak} days`);
     }
-    if (data.weekly_streak) {
-        output.push(`- Current Weekly Streak: ${data.weekly_streak} weeks`);
+    if (data.current_weekly_streak) {
+        output.push(`- Current Weekly Streak: ${data.current_weekly_streak} weeks`);
     }
     if (data.max_weekly_streak) {
         output.push(`- Max Weekly Streak: ${data.max_weekly_streak} weeks`);
@@ -1174,25 +926,11 @@ async function formatKarmaOutput(data, jsonOutput = false) {
         for (const day of data.daily_stats) {
             output.push(`\nDate: ${day.date}`);
             output.push(`Total Completed: ${day.total_completed}`);
-            
             if (day.projects?.length > 0) {
-                // Add life goals summary for the day
-                const { goalStats, totalTasks } = processProjectStats(day.projects);
-                if (totalTasks > 0) {
-                    output.push('Life Goals:');
-                    for (const [goal, count] of Object.entries(goalStats)) {
-                        const percentage = ((count / totalTasks) * 100).toFixed(1);
-                        output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
-                    }
-                }
-                
-                output.push('\nProjects:');
+                output.push('Projects:');
                 for (const project of day.projects) {
-                    // Try both v1 and v2 project IDs
-                    const projectPath = projectCache.get(String(project.id)) || 
-                                      (project.v2_id && projectCache.get(project.v2_id)) || 
-                                      `Unknown Project (${project.id})`;
-                    output.push(`- ${projectPath}: ${project.completed_count} tasks`);
+                    const projectName = projectCache.get(String(project.id)) || `Unknown Project (${project.id})`;
+                    output.push(`- ${projectName}: ${project.completed_count} tasks`);
                 }
             }
         }
@@ -1203,31 +941,837 @@ async function formatKarmaOutput(data, jsonOutput = false) {
         for (const week of data.weekly_stats) {
             output.push(`\nWeek: ${week.week || 'Unknown Week'}`);
             output.push(`Total Completed: ${week.total_completed}`);
-            
             if (week.projects?.length > 0) {
-                // Add life goals summary for the week
-                const { goalStats, totalTasks } = processProjectStats(week.projects);
-                if (totalTasks > 0) {
-                    output.push('Life Goals:');
-                    for (const [goal, count] of Object.entries(goalStats)) {
-                        const percentage = ((count / totalTasks) * 100).toFixed(1);
-                        output.push(`  ${goal}: ${count} tasks (${percentage}%)`);
-                    }
-                }
-                
-                output.push('\nProjects:');
+                output.push('Projects:');
                 for (const project of week.projects) {
-                    // Try both v1 and v2 project IDs
-                    const projectPath = projectCache.get(String(project.id)) || 
-                                      (project.v2_id && projectCache.get(project.v2_id)) || 
-                                      `Unknown Project (${project.id})`;
-                    output.push(`- ${projectPath}: ${project.completed_count} tasks`);
+                    const projectName = projectCache.get(String(project.id)) || `Unknown Project (${project.id})`;
+                    output.push(`- ${projectName}: ${project.completed_count} tasks`);
                 }
             }
         }
     }
 
     return output.join('\n');
+}
+
+// Add after the karma and completed functions
+
+async function generateReport() {
+    // Fetch all the necessary data
+    const karmaData = await getKarmaStats();
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    
+    const completedData = await getCompleted({
+        since: thirtyDaysAgo.toISOString().split('T')[0]
+    });
+
+    // Get active tasks with @Next label
+    const nextTasks = await fetch(`${REST_API_URL}/tasks?filter=@Next`, {
+        headers: {
+            'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+        }
+    }).then(res => res.json());
+
+    // Get all tasks for health analysis
+    const allTasks = await fetch(`${REST_API_URL}/tasks`, {
+        headers: {
+            'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+        }
+    }).then(res => res.json());
+
+    // Get activity for health analysis
+    const activities = await getActivity({
+        since: thirtyDaysAgo.toISOString().split('T')[0],
+        objectType: 'item'
+    });
+
+    // Fetch and cache projects
+    await fetchAndCacheProjects();
+
+    // Process activities for health indicators
+    const groupedActivities = await groupActivities(activities.events);
+    await addHealthIndicatorsToJson(groupedActivities);
+
+    // Collect health statistics
+    const healthStats = {
+        idle: 0,
+        long_postpones: 0,
+        frequent_postpones: 0,
+        healthy: 0,
+        total: 0
+    };
+
+    // Helper function to process items for health stats
+    const processItemsForHealth = (items) => {
+        for (const item of Object.values(items)) {
+            if (item.health) {
+                healthStats.total++;
+                if (item.health.health_status.length === 0) {
+                    healthStats.healthy++;
+                } else {
+                    item.health.health_status.forEach(status => {
+                        healthStats[status]++;
+                    });
+                }
+            }
+        }
+    };
+
+    // Process all items for health statistics
+    Object.values(groupedActivities.projects).forEach(project => {
+        processItemsForHealth(project.items);
+        Object.values(project.sections).forEach(section => {
+            processItemsForHealth(section.items);
+        });
+    });
+
+    // Generate life goals distribution
+    const lifeGoals = {};
+    const processedProjects = new Set();
+
+    const categorizeProject = (projectPath) => {
+        const topLevel = projectPath.split(' > ')[0];
+        // Skip Inbox and projects starting with a dash
+        if (topLevel === 'Inbox' || topLevel.startsWith('-')) {
+            return null;
+        }
+        if (!lifeGoals[topLevel]) {
+            lifeGoals[topLevel] = {
+                total: 0,
+                completed: 0
+            };
+        }
+        return topLevel;
+    };
+
+    // Process completed tasks
+    completedData.items.forEach(item => {
+        const projectPath = projectCache.get(String(item.project_id));
+        if (projectPath) {
+            const category = categorizeProject(projectPath);
+            if (category) {  // Only count if not skipped
+                lifeGoals[category].completed++;
+            }
+        }
+    });
+
+    // Process active tasks
+    allTasks.forEach(task => {
+        const projectPath = projectCache.get(String(task.project_id));
+        if (projectPath) {
+            const category = categorizeProject(projectPath);
+            if (category) {  // Only count if not skipped
+                lifeGoals[category].total++;
+            }
+        }
+    });
+
+    // Generate project activity stats
+    const projectActivity = {};
+    completedData.items.forEach(item => {
+        const projectPath = projectCache.get(String(item.project_id));
+        if (projectPath) {
+            projectActivity[projectPath] = (projectActivity[projectPath] || 0) + 1;
+        }
+    });
+
+    // Sort project activity for top 5
+    const topProjects = Object.entries(projectActivity)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5);
+
+    // Generate HTML report
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todoist Status Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #2c3e50;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .stat-box h3 {
+            margin: 0;
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        .stat-box p {
+            margin: 10px 0 0;
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        .next-actions {
+            list-style-type: none;
+            padding: 0;
+        }
+        .next-actions li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .next-actions li:last-child {
+            border-bottom: none;
+        }
+        .project-path {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .due-date {
+            color: #e74c3c;
+            font-size: 0.9em;
+        }
+        .trend-indicator {
+            font-size: 1.2em;
+            margin-left: 5px;
+        }
+        .trend-up {
+            color: #27ae60;
+        }
+        .trend-down {
+            color: #e74c3c;
+        }
+        .trend-stable {
+            color: #f1c40f;
+        }
+        .completion-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .completion-table th,
+        .completion-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .completion-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .karma-updates {
+            list-style: none;
+            padding: 0;
+        }
+        .karma-updates li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .karma-reason {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-left: 20px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .karma-reason.positive {
+            color: #27ae60;
+            background-color: rgba(39, 174, 96, 0.1);
+        }
+        .karma-reason.negative {
+            color: #e74c3c;
+            background-color: rgba(231, 76, 60, 0.1);
+        }
+        .karma-value {
+            font-weight: bold;
+        }
+        .karma-value.positive {
+            color: #27ae60;
+        }
+        .karma-value.negative {
+            color: #e74c3c;
+        }
+        .health-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .postponed-tasks {
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .task-list {
+            margin-top: 10px;
+        }
+        .task-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .task-item:last-child {
+            border-bottom: none;
+        }
+        .task-content {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        .task-project {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin: 4px 0;
+        }
+        .task-stats {
+            font-size: 0.85em;
+            color: #e67e22;
+            display: flex;
+            gap: 15px;
+        }
+        .task-stats span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🏆 Karma & Goals</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>Current Karma</h3>
+                <p>
+                    ${karmaData.karma}
+                    <span class="trend-indicator ${karmaData.karma_trend?.trend === 'up' ? 'trend-up' : karmaData.karma_trend?.trend === 'down' ? 'trend-down' : 'trend-stable'}">
+                        ${karmaData.karma_trend?.trend === 'up' ? '↑' : karmaData.karma_trend?.trend === 'down' ? '↓' : '→'}
+                        ${karmaData.karma_trend?.karma_inc >= 0 ? '+' : ''}${karmaData.karma_trend?.karma_inc || 0}
+                    </span>
+                </p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Goal</h3>
+                <p>${karmaData.daily_goal} tasks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Goal</h3>
+                <p>${karmaData.weekly_goal} tasks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Streak</h3>
+                <p>${karmaData.daily_streak || 0} days</p>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>Daily Streak Record</h3>
+                <p>${karmaData.max_daily_streak || 0} days</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Streak</h3>
+                <p>${karmaData.weekly_streak || 0} weeks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Streak Record</h3>
+                <p>${karmaData.max_weekly_streak || 0} weeks</p>
+            </div>
+            <div class="stat-box">
+                <h3>Total Completed</h3>
+                <p>${karmaData.completed_count || 0} tasks</p>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="karmaHistoryChart"></canvas>
+        </div>
+
+        <h3>Recent Karma Updates</h3>
+        <ul class="karma-updates">
+            ${karmaData.karma_updates?.slice(0, 10).map(update => `
+                <li>
+                    <div>${new Date(update.date).toLocaleDateString()} - 
+                        <span class="karma-value">${update.karma}</span>
+                    </div>
+                    ${update.positive_karma_reasons_detail.map(reason => `
+                        <div class="karma-reason positive">✓ ${reason}</div>
+                    `).join('')}
+                    ${update.negative_karma_reasons_detail.map(reason => `
+                        <div class="karma-reason negative">✗ ${reason}</div>
+                    `).join('')}
+                </li>
+            `).join('')}
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>📊 Completion Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <h3>30-Day Total</h3>
+                <p>${completedData.items.length}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Daily Average</h3>
+                <p>${(completedData.items.length / 30).toFixed(1)}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Weekly Average</h3>
+                <p>${((completedData.items.length / 30) * 7).toFixed(1)}</p>
+            </div>
+            <div class="stat-box">
+                <h3>Completion Rate</h3>
+                <p>${((completedData.items.length / (completedData.items.length + allTasks.length)) * 100).toFixed(1)}%</p>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="completionTrendChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="weeklyComparisonChart"></canvas>
+        </div>
+
+        <h3>Daily Completion Breakdown</h3>
+        <table class="completion-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Completed Tasks</th>
+                    <th>Most Active Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${karmaData.days_items?.slice(0, 7).map(day => {
+                    const topProject = day.items?.reduce((a, b) => 
+                        (a.completed > b.completed) ? a : b, { completed: 0 });
+                    return `
+                        <tr>
+                            <td>${new Date(day.date).toLocaleDateString()}</td>
+                            <td>${day.total_completed}</td>
+                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+
+        <h3>Weekly Completion Breakdown</h3>
+        <table class="completion-table">
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Completed Tasks</th>
+                    <th>Most Active Project</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${karmaData.week_items?.slice(0, 4).map(week => {
+                    const topProject = week.items?.reduce((a, b) => 
+                        (a.completed > b.completed) ? a : b, { completed: 0 });
+                    return `
+                        <tr>
+                            <td>${week.date}</td>
+                            <td>${week.total_completed}</td>
+                            <td>${topProject ? projectCache.get(String(topProject.id)) || 'Unknown Project' : 'N/A'}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>🎯 Life Goals Distribution</h2>
+        <div class="chart-container">
+            <canvas id="lifeGoalsChart"></canvas>
+        </div>
+        <div class="chart-container" style="height: 500px;">
+            <canvas id="lifeGoalsRadarChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>💊 Task Health Overview</h2>
+        <div class="health-container">
+            <div class="chart-container" style="flex: 1;">
+                <canvas id="healthChart"></canvas>
+            </div>
+            <div class="postponed-tasks" style="flex: 1;">
+                <h3>Most Postponed Tasks</h3>
+                <div class="task-list">
+                    ${(() => {
+                        // Collect all tasks with postponements
+                        const postponedTasks = [];
+                        const processItems = (items, projectPath) => {
+                            for (const [itemId, item] of Object.entries(items || {})) {
+                                if (item?.health?.due_date_changes > 0) {
+                                    postponedTasks.push({
+                                        content: item.item_events[0]?.extra_data?.content || 'Unknown Task',
+                                        projectPath,
+                                        avgPostponeDays: item.health.avg_postpone_days,
+                                        totalPostpones: item.health.due_date_changes,
+                                        lastEventDate: item.item_events[0]?.event_date
+                                    });
+                                }
+                            }
+                        };
+
+                        // Process all projects and their items
+                        Object.entries(groupedActivities.projects || {}).forEach(([projectId, project]) => {
+                            const projectPath = projectCache.get(String(projectId)) || 'Unknown Project';
+                            processItems(project.items, projectPath);
+                            Object.values(project.sections || {}).forEach(section => {
+                                processItems(section.items, projectPath);
+                            });
+                        });
+
+                        // Sort by severity (avg postpone days * total postpones) instead of recency
+                        return postponedTasks
+                            .sort((a, b) => (b.avgPostponeDays * Math.pow(b.totalPostpones, 2)) - (a.avgPostponeDays * Math.pow(a.totalPostpones, 2)))
+                            .slice(0, 10)
+                            .map(task => `
+                                <div class="task-item">
+                                    <div class="task-content">${task.content}</div>
+                                    <div class="task-project">📂 ${task.projectPath}</div>
+                                    <div class="task-stats">
+                                        <span title="Average days postponed">⏰ ${Math.round(task.avgPostponeDays)} days avg.</span>
+                                        <span title="Total times postponed">🔄 ${task.totalPostpones}x postponed</span>
+                                        <span title="Severity score">⚠️ Score: ${Math.round(task.avgPostponeDays * Math.pow(task.totalPostpones, 2))}</span>
+                                    </div>
+                                </div>
+                            `)
+                            .join('');
+                    })()}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📈 Project Activity (30 Days)</h2>
+        <div class="chart-container">
+            <canvas id="projectActivityChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>⏭️ Next Actions</h2>
+        <ul class="next-actions">
+            ${nextTasks.map(task => `
+                <li>
+                    <div>${task.content}</div>
+                    <div class="project-path">📂 ${projectCache.get(String(task.project_id)) || 'Unknown Project'}</div>
+                    ${task.due?.date ? `<div class="due-date">📅 Due: ${task.due.date}</div>` : ''}
+                </li>
+            `).join('')}
+        </ul>
+    </div>
+
+    <script>
+        // Life Goals Chart
+        new Chart(document.getElementById('lifeGoalsChart'), {
+            type: 'bar',
+            data: {
+                labels: ${JSON.stringify(Object.keys(lifeGoals))},
+                datasets: [{
+                    label: 'Active Tasks',
+                    data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.total))},
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }, {
+                    label: 'Completed Tasks',
+                    data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.completed))},
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        stacked: true
+                    },
+                    x: {
+                        stacked: true
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Life Goals Distribution (Bar Chart)'
+                    }
+                }
+            }
+        });
+
+        // Life Goals Radar Chart
+        new Chart(document.getElementById('lifeGoalsRadarChart'), {
+            type: 'radar',
+            data: {
+                labels: ${JSON.stringify(Object.keys(lifeGoals))},
+                datasets: [{
+                    label: 'Active Tasks',
+                    data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.total))},
+                    backgroundColor: 'rgba(54, 162, 235, 0.3)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 3,
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(54, 162, 235, 1)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }, {
+                    label: 'Completed Tasks',
+                    data: ${JSON.stringify(Object.values(lifeGoals).map(g => g.completed))},
+                    backgroundColor: 'rgba(75, 192, 192, 0.3)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 3,
+                    pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(75, 192, 192, 1)',
+                    pointRadius: 6,
+                    pointHoverRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        angleLines: {
+                            display: true,
+                            color: 'rgba(0, 0, 0, 0.2)',
+                            lineWidth: 2
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.2)',
+                            lineWidth: 2
+                        },
+                        ticks: {
+                            backdropColor: 'transparent',
+                            font: {
+                                size: 14
+                            }
+                        },
+                        pointLabels: {
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Life Goals Balance (Radar Chart)',
+                        font: {
+                            size: 20,
+                            weight: 'bold'
+                        },
+                        padding: 20
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            font: {
+                                size: 14
+                            },
+                            padding: 20
+                        }
+                    },
+                    tooltip: {
+                        titleFont: {
+                            size: 16
+                        },
+                        bodyFont: {
+                            size: 14
+                        },
+                        padding: 12
+                    }
+                }
+            }
+        });
+
+        // Health Chart
+        new Chart(document.getElementById('healthChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Healthy', 'Idle', 'Long Postpones', 'Frequent Postpones'],
+                datasets: [{
+                    data: [
+                        ${healthStats.healthy},
+                        ${healthStats.idle},
+                        ${healthStats.long_postpones},
+                        ${healthStats.frequent_postpones}
+                    ],
+                    backgroundColor: [
+                        'rgba(75, 192, 192, 0.5)',
+                        'rgba(255, 206, 86, 0.5)',
+                        'rgba(255, 159, 64, 0.5)',
+                        'rgba(255, 99, 132, 0.5)'
+                    ],
+                    borderColor: [
+                        'rgba(75, 192, 192, 1)',
+                        'rgba(255, 206, 86, 1)',
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(255, 99, 132, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+
+        // Project Activity Chart
+        new Chart(document.getElementById('projectActivityChart'), {
+            type: 'bar',
+            data: {
+                labels: ${JSON.stringify(topProjects.map(([name]) => name))},
+                datasets: [{
+                    label: 'Completed Tasks',
+                    data: ${JSON.stringify(topProjects.map(([, count]) => count))},
+                    backgroundColor: 'rgba(153, 102, 255, 0.5)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Karma History Chart
+        new Chart(document.getElementById('karmaHistoryChart'), {
+            type: 'line',
+            data: {
+                labels: ${JSON.stringify([...(karmaData.days_items || [])].reverse().map(day => 
+                    new Date(day.date).toLocaleDateString()
+                ))},
+                datasets: [{
+                    label: 'Tasks Completed',
+                    type: 'bar',
+                    data: ${JSON.stringify([...(karmaData.days_items || [])].reverse().map(day => day.total_completed))},
+                    backgroundColor: 'rgba(75, 192, 192, 0.3)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Karma Average',
+                    type: 'line',
+                    data: ${JSON.stringify(karmaData.karma_graph_data?.map(k => k.karma_avg))},
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.1,
+                    fill: false,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(255, 99, 132, 1)',
+                    pointHoverBorderWidth: 3,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Tasks Completed'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Karma Average'
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        min: Math.floor(Math.min(...${JSON.stringify(karmaData.karma_graph_data?.map(k => k.karma_avg))} || []) * 0.999),
+                        max: Math.ceil(Math.max(...${JSON.stringify(karmaData.karma_graph_data?.map(k => k.karma_avg))} || []) * 1.001),
+                        ticks: {
+                            maxTicksLimit: 8
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Daily Task Completion & Karma History'
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>`;
+
+    return html;
 }
 
 // Update the main function to handle async formatters
@@ -1372,6 +1916,17 @@ async function main() {
                     }
                 });
         })
+        .command('report', 'Generate a comprehensive status report', (yargs) => {
+            return yargs
+                .example('$0 report', 'Generate a comprehensive status report')
+                .example('$0 report --output report.html', 'Save the report to an HTML file')
+                .options({
+                    'output': {
+                        description: 'Save the report to an HTML file',
+                        type: 'string'
+                    }
+                });
+        })
         .demandCommand(1, 'You must specify a command')
         .help()
         .argv;
@@ -1455,12 +2010,12 @@ async function main() {
                             if (!argv.includeChildren) {
                                 // Only include section events
                                 filteredGroups.projects[projectId].sections[sectionId] = {
-                                    section_events: project.sections[sectionId].section_events,
+                                    section_events: groupedActivities.projects[projectId].sections[sectionId].section_events,
                                     items: {}
                                 };
                             } else {
                                 // Include section and its items
-                                filteredGroups.projects[projectId].sections[sectionId] = project.sections[sectionId];
+                                filteredGroups.projects[projectId].sections[sectionId] = groupedActivities.projects[projectId].sections[sectionId];
                             }
                             break;
                         }
@@ -1536,8 +2091,11 @@ async function main() {
                 };
             }
 
-            // Add health indicators
-            addHealthIndicatorsToJson(finalOutput);
+            // Fetch and cache projects before displaying output
+            await fetchAndCacheProjects(api);
+
+            // Add health indicators before output
+            await addHealthIndicatorsToJson(finalOutput);
 
             if (argv.json) {
                 // Output JSON format
@@ -1566,11 +2124,97 @@ async function main() {
         } else if (argv._[0] === 'karma') {
             const karmaData = await getKarmaStats();
             console.log(await formatKarmaOutput(karmaData, argv.json));
+        } else if (argv._[0] === 'report') {
+            const report = await generateReport();
+            if (argv.output) {
+                const fs = await import('fs/promises');
+                await fs.writeFile(argv.output, report);
+                console.log(`Report saved to ${argv.output}`);
+            } else {
+                console.log(report);
+            }
         }
     } catch (error) {
         console.error('Error:', error.message);
         process.exit(1);
     }
+}
+
+// Function to get all events for a specific task
+async function getAllEventsForTask(taskId) {
+    const allEvents = [];
+    let offset = 0;
+    let hasMore = true;
+    const seenEvents = new Set();
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second delay between retries
+
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    while (hasMore) {
+        let success = false;
+        let retryCount = 0;
+
+        while (!success && retryCount < maxRetries) {
+            try {
+                const params = new URLSearchParams({
+                    object_type: 'item',
+                    object_id: taskId,
+                    limit: '100',
+                    offset: String(offset)
+                });
+
+                const response = await fetch(`${SYNC_ACTIVITY_URL}?${params.toString()}`, {
+                    headers: {
+                        'Authorization': `Bearer ${process.env.TODOIST_API_TOKEN}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch task events: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Process and deduplicate events
+                const processedEvents = data.events
+                    .map(event => ({
+                        ...event,
+                        object_id: String(event.object_id),
+                        parent_project_id: event.parent_project_id ? String(event.parent_project_id) : null,
+                        parent_id: event.parent_id ? String(event.parent_id) : null,
+                        extra_data: event.extra_data ? {
+                            ...event.extra_data,
+                            section_id: event.extra_data.section_id ? String(event.extra_data.section_id) : null,
+                            parent_id: event.extra_data.parent_id ? String(event.extra_data.parent_id) : null
+                        } : null
+                    }))
+                    .filter(event => {
+                        // Create a unique key for the event
+                        const eventKey = `${event.object_type}-${event.object_id}-${event.event_type}-${event.event_date}`;
+                        if (seenEvents.has(eventKey)) return false;
+                        seenEvents.add(eventKey);
+                        return true;
+                    });
+
+                allEvents.push(...processedEvents);
+                
+                // Check if we need to fetch more
+                hasMore = data.events.length === 100;
+                offset += data.events.length;
+                success = true;
+            } catch (error) {
+                retryCount++;
+                if (retryCount === maxRetries) {
+                    console.error(`Failed to fetch events for task ${taskId} after ${maxRetries} retries:`, error.message);
+                    return allEvents; // Return what we have so far
+                }
+                await delay(retryDelay * retryCount); // Exponential backoff
+            }
+        }
+    }
+
+    return allEvents;
 }
 
 main().catch(console.error); 
