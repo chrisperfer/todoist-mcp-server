@@ -748,6 +748,55 @@ async function main() {
                     }
                 });
         })
+        .command('add', 'Add a single task', (yargs) => {
+            return yargs
+                .options({
+                    content: {
+                        description: 'Task content (required)',
+                        type: 'string',
+                        demandOption: true
+                    },
+                    projectId: {
+                        description: 'Project ID to add task to',
+                        type: 'string',
+                        coerce: String
+                    },
+                    sectionId: {
+                        description: 'Section ID to add task to',
+                        type: 'string',
+                        coerce: String
+                    },
+                    parentId: {
+                        description: 'Parent task ID for subtask',
+                        type: 'string',
+                        coerce: String
+                    },
+                    priority: {
+                        description: 'Priority (1-4)',
+                        type: 'number',
+                        choices: [1, 2, 3, 4]
+                    },
+                    'due-string': {
+                        description: 'Due date as string (e.g., "tomorrow", "next week")',
+                        type: 'string'
+                    },
+                    'due-date': {
+                        description: 'Due date (YYYY-MM-DD)',
+                        type: 'string'
+                    },
+                    labels: {
+                        description: 'Labels (space-separated, quoted)',
+                        type: 'array',
+                        string: true,
+                        coerce: arg => typeof arg === 'string' ? arg.split(',').map(s => s.trim()) : arg
+                    },
+                    json: {
+                        description: 'Output in JSON format',
+                        type: 'boolean',
+                        default: false
+                    }
+                });
+        })
         .demandCommand(1, 'You must provide a valid command')
         .help()
         .argv;
@@ -793,6 +842,21 @@ async function main() {
 
         case 'batch-add': {
             await batchAddTasks(api, argv.tasks, {
+                projectId: argv.projectId,
+                sectionId: argv.sectionId,
+                parentId: argv.parentId,
+                priority: argv.priority,
+                dueString: argv.dueString,
+                dueDate: argv.dueDate,
+                labels: argv.labels,
+                json: argv.json
+            });
+            break;
+        }
+        
+        case 'add': {
+            // Route single task add to batchAddTasks with an array of one item
+            await batchAddTasks(api, [argv.content], {
                 projectId: argv.projectId,
                 sectionId: argv.sectionId,
                 parentId: argv.parentId,

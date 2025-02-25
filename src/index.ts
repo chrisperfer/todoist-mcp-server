@@ -407,7 +407,8 @@ async function runServer() {
 
   // Set API token for child processes
   if (!process.env.TODOIST_API_TOKEN) {
-    console.error("Warning: TODOIST_API_TOKEN environment variable not set. Please set it for the server to function properly.");
+    console.error("Warning: TODOIST_API_TOKEN environment variable not set. Setting it manually for this session.");
+    process.env.TODOIST_API_TOKEN = "fdebb665194ea019e3362061d94c4502678576a5";
   }
 
   // Create a map of tools for capabilities
@@ -485,13 +486,42 @@ async function runServer() {
           args.push(`--${key}`);
         }
       } else if (typeof value === 'string') {
-        // For string values, add as --key=value or --key "value" depending on command
-        if (key === 'filter' || key === 'tasks' || key === 'names' || key === 'taskIds' || key === 'sections' || 
-            key === 'labels' || key === 'add-labels' || key === 'remove-labels') {
+        // Special handling for parameters that should be arrays
+        const needsArrayTransformation = (
+          (toolConfig.script === 'section.js' && toolConfig.subcommand === 'bulk-add' && key === 'names') ||
+          (toolConfig.script === 'project.js' && toolConfig.subcommand === 'bulk-add' && key === 'names') ||
+          (toolConfig.script === 'task.js' && toolConfig.subcommand === 'batch-add' && key === 'tasks') ||
+          (key === 'taskIds' || key === 'sections')
+        );
+        
+        if (needsArrayTransformation) {
+          // Convert the string to an array of arguments
+          // This handles space-separated values with quoted strings
+          // For example: "\"To Do\" \"In Progress\" \"Completed\""
+          const regex = /"([^"]*)"|(\S+)/g;
+          const matches = [...value.matchAll(regex)];
+          const items = matches.map(match => match[1] || match[2]);
+          
+          // Add the parameter name
+          args.push(`--${key}`);
+          
+          // Add each array item as a separate argument
+          items.forEach(item => {
+            args.push(item);
+          });
+        } else if (toolConfig.script === 'find.js' && key === 'filter') {
+          // Special handling for find.js - the filter should be the first positional argument, not a flag
+          args.unshift(value);
+        } else if (key === 'filter' || key === 'tasks' || key === 'labels' || key === 'add-labels' || key === 'remove-labels') {
           // These parameters need to be quoted
           args.push(`--${key}`, `${value}`);
         } else {
-          args.push(`--${key}=${value}`);
+          // Special mapping for single task add content parameter
+          if (toolConfig.script === 'task.js' && toolConfig.subcommand === 'add' && key === 'content') {
+            args.push(`--${key}`, `${value}`);
+          } else {
+            args.push(`--${key}=${value}`);
+          }
         }
       }
     }
@@ -511,27 +541,34 @@ async function runServer() {
         formattedText = JSON.stringify(result, null, 2);
       }
 
-      const response = {
-        result: {
-          content: [{
-            type: "text",
-            text: formattedText
-          }]
-        }
-      };
+      // Ensure formattedText is a non-empty string
+      if (!formattedText) {
+        formattedText = "No results found.";
+      }
 
-      console.error('Sending response:', typeof formattedText === 'string' ? formattedText.substring(0, 100) + '...' : formattedText);
-      return response;
+      // Debug logging to understand response structure
+      console.error('Full response shape:', {
+        result_type: typeof result,
+        formattedText_type: typeof formattedText,
+        formattedText_length: typeof formattedText === 'string' ? formattedText.length : 'N/A',
+        has_content: Boolean(formattedText)
+      });
+
+      // Ensure the response conforms to the expected MCP structure
+      return {
+        content: [{
+          type: "text",
+          text: formattedText
+        }]
+      };
     } catch (error) {
       console.error('Tool error:', error);
       const errorResponse = {
-        result: {
-          content: [{
-            type: "text",
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`
-          }],
-          isError: true
-        }
+        content: [{
+          type: "text",
+          text: `Error: ${error instanceof Error ? error.message : String(error)}`
+        }],
+        isError: true
       };
       console.error('Sending error response:', errorResponse);
       return errorResponse;

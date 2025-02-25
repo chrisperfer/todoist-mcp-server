@@ -21,3 +21,5 @@ yarn-error.log*
 tools/todoist/test_json.json
 todoist-report.html
 test_json.json
+report.html
+src/index.ts
