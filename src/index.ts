@@ -17,8 +17,15 @@ const __dirname = dirname(__filename);
 const TOOLS_DIR = join(__dirname, '..', 'tools', 'todoist');
 
 // Helper function to execute tool and return JSON result
-async function executeTool(toolPath: string, args: string[] = []): Promise<any> {
+async function executeTool(toolPath: string, args: string[] = [], useJson: boolean = false): Promise<any> {
   return new Promise((resolve, reject) => {
+    // Add --json flag if specified
+    if (useJson) {
+      args.push('--json');
+    }
+    
+    console.error(`Executing: node ${toolPath} ${args.join(' ')}`);
+    
     const childProcess: ChildProcess = spawn('node', [toolPath, ...args], {
       env: { ...process.env, TODOIST_API_TOKEN: process.env.TODOIST_API_TOKEN }
     });
@@ -39,200 +46,359 @@ async function executeTool(toolPath: string, args: string[] = []): Promise<any> 
         reject(new Error(`Tool execution failed: ${stderr}`));
         return;
       }
-      try {
-        resolve(JSON.parse(stdout));
-      } catch (e) {
+      
+      if (useJson) {
+        try {
+          resolve(JSON.parse(stdout));
+        } catch (e) {
+          console.error('Failed to parse JSON:', e);
+          resolve(stdout.trim());
+        }
+      } else {
         resolve(stdout.trim());
       }
     });
   });
 }
 
-// Define tools that map to our CLI tools
+// Define tools based on the core Todoist scripts
 const TOOLS: Tool[] = [
+  // Find tool
   {
-    name: "todoist_list_tasks",
-    description: "List tasks from Todoist with various filters",
+    name: "todoist_find",
+    description: "Find tasks using Todoist filters with advanced querying capabilities",
     inputSchema: {
       type: "object",
       properties: {
-        project_id: { type: "string", description: "Project ID to filter tasks" },
-        filter: { type: "string", description: "Todoist filter query" }
+        filter: { type: "string", description: "Todoist filter query (e.g., 'p:ProjectName & @label', 'today | tomorrow', 'overdue')" },
+        ids: { type: "boolean", description: "Output task IDs in format suitable for batch commands" },
+        json: { type: "boolean", description: "Output in JSON format with enhanced task information" }
+      },
+      required: ["filter"]
+    }
+  },
+  
+  // List tools
+  {
+    name: "todoist_list_tasks",
+    description: "List and filter tasks from Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "Filter tasks using Todoist query syntax" },
+        taskId: { type: "string", description: "Get detailed information for a specific task" },
+        json: { type: "boolean", description: "Output in JSON format" }
       }
     }
   },
   {
-    name: "todoist_add_task",
-    description: "Create a new task in Todoist",
+    name: "todoist_list_projects",
+    description: "List and filter projects from Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "Filter projects by name" },
+        projectId: { type: "string", description: "Get detailed information for a specific project" },
+        data: { type: "boolean", description: "Include tasks, sections, and notes with --projectId" },
+        info: { type: "boolean", description: "Include only project info and notes with --projectId" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      }
+    }
+  },
+  {
+    name: "todoist_list_sections",
+    description: "List and filter sections from Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "Filter sections by name or project" },
+        projectId: { type: "string", description: "Filter sections by project ID" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      }
+    }
+  },
+  
+  // Task tools
+  {
+    name: "todoist_task_add",
+    description: "Add a new task to Todoist",
     inputSchema: {
       type: "object",
       properties: {
         content: { type: "string", description: "Task content" },
         description: { type: "string", description: "Task description" },
-        project_id: { type: "string", description: "Project ID" },
-        due_string: { type: "string", description: "Due date in natural language" }
+        projectId: { type: "string", description: "Project ID to add task to" },
+        sectionId: { type: "string", description: "Section ID to add task to" },
+        parentId: { type: "string", description: "Parent task ID for subtasks" },
+        priority: { type: "string", description: "Task priority (1-4)" },
+        "due-string": { type: "string", description: "Due date as text" },
+        "due-date": { type: "string", description: "Due date (YYYY-MM-DD)" },
+        labels: { type: "string", description: "Labels (space-separated)" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
       required: ["content"]
     }
   },
   {
-    name: "todoist_update_task",
+    name: "todoist_task_batch_add",
+    description: "Add multiple tasks to Todoist in batch",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tasks: { type: "string", description: "Task contents (space-separated, use quotes)" },
+        projectId: { type: "string", description: "Project to add tasks to" },
+        sectionId: { type: "string", description: "Section to add tasks to" },
+        parentId: { type: "string", description: "Parent task ID for subtasks" },
+        priority: { type: "string", description: "Task priority (1-4)" },
+        "due-string": { type: "string", description: "Due date as text" },
+        "due-date": { type: "string", description: "Due date (YYYY-MM-DD)" },
+        labels: { type: "string", description: "Labels (space-separated)" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["tasks"]
+    }
+  },
+  {
+    name: "todoist_task_update",
     description: "Update an existing task in Todoist",
     inputSchema: {
       type: "object",
       properties: {
-        task_id: { type: "string", description: "Task ID to update" },
-        content: { type: "string", description: "New task content" },
-        description: { type: "string", description: "New task description" },
-        due_string: { type: "string", description: "New due date" }
+        taskId: { type: "string", description: "Task ID to update" },
+        content: { type: "string", description: "New content" },
+        description: { type: "string", description: "New description" },
+        priority: { type: "string", description: "New priority (1-4)" },
+        "due-string": { type: "string", description: "New due date as text" },
+        "due-date": { type: "string", description: "New due date (YYYY-MM-DD)" },
+        labels: { type: "string", description: "Set labels (space-separated)" },
+        "add-labels": { type: "string", description: "Add to existing labels" },
+        "remove-labels": { type: "string", description: "Remove from existing labels" },
+        complete: { type: "boolean", description: "Mark as complete" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["task_id"]
+      required: ["taskId"]
     }
   },
   {
-    name: "todoist_move_task",
-    description: "Move a task to a different project or section",
+    name: "todoist_task_batch_update",
+    description: "Update multiple tasks in Todoist in batch",
     inputSchema: {
       type: "object",
       properties: {
-        task_id: { type: "string", description: "Task ID to move" },
-        project_id: { type: "string", description: "Target project ID" },
-        section_id: { type: "string", description: "Target section ID (optional)" }
+        taskIds: { type: "string", description: "Task IDs to update (space-separated)" },
+        content: { type: "string", description: "New content" },
+        description: { type: "string", description: "New description" },
+        priority: { type: "string", description: "New priority (1-4)" },
+        "due-string": { type: "string", description: "New due date as text" },
+        "due-date": { type: "string", description: "New due date (YYYY-MM-DD)" },
+        labels: { type: "string", description: "Set labels (space-separated)" },
+        "add-labels": { type: "string", description: "Add to existing labels" },
+        "remove-labels": { type: "string", description: "Remove from existing labels" },
+        complete: { type: "boolean", description: "Mark as complete" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["task_id", "project_id"]
+      required: ["taskIds"]
     }
   },
   {
-    name: "todoist_auto_tagger",
-    description: "Automatically tag tasks based on content",
+    name: "todoist_task_batch_move",
+    description: "Move multiple tasks in Todoist in batch",
     inputSchema: {
       type: "object",
       properties: {
-        task_id: { type: "string", description: "Task ID to auto-tag" }
+        taskIds: { type: "string", description: "Task IDs to move (space-separated)" },
+        "to-project-id": { type: "string", description: "Move to project" },
+        "to-section-id": { type: "string", description: "Move to section" },
+        "to-parent-id": { type: "string", description: "Move as subtask of parent" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["task_id"]
+      required: ["taskIds"]
     }
   },
+  
+  // Project tools
   {
-    name: "todoist_list_labels",
-    description: "List all labels in Todoist",
+    name: "todoist_project_add",
+    description: "Add a new project to Todoist",
     inputSchema: {
       type: "object",
       properties: {
-        name_contains: { type: "string", description: "Filter labels by name" }
-      }
-    }
-  },
-  {
-    name: "todoist_add_comment",
-    description: "Add a comment to a task",
-    inputSchema: {
-      type: "object",
-      properties: {
-        task_id: { type: "string", description: "Task ID to comment on" },
-        content: { type: "string", description: "Comment content" }
-      },
-      required: ["task_id", "content"]
-    }
-  },
-  {
-    name: "todoist_list_projects",
-    description: "List all projects in Todoist",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name_contains: { type: "string", description: "Filter projects by name" }
-      }
-    }
-  },
-  {
-    name: "todoist_add_project",
-    description: "Create a new project in Todoist",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Project name" },
-        parent_id: { type: "string", description: "Parent project ID" }
+        name: { type: "string", description: "Project name (required)" },
+        parentId: { type: "string", description: "Parent project ID" },
+        color: { type: "string", description: "Project color" },
+        view: { type: "string", description: "View style (list/board)" },
+        favorite: { type: "boolean", description: "Set as favorite" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
       required: ["name"]
     }
   },
   {
-    name: "todoist_update_project",
+    name: "todoist_project_bulk_add",
+    description: "Add multiple projects to Todoist",
+    inputSchema: {
+      type: "object",
+      properties: {
+        names: { type: "string", description: "Project names (space-separated, use quotes)" },
+        parentId: { type: "string", description: "Parent project ID" },
+        color: { type: "string", description: "Project color" },
+        view: { type: "string", description: "View style (list/board)" },
+        favorite: { type: "boolean", description: "Set as favorite" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["names"]
+    }
+  },
+  {
+    name: "todoist_project_update",
     description: "Update an existing project in Todoist",
     inputSchema: {
       type: "object",
       properties: {
-        project_id: { type: "string", description: "Project ID to update" },
-        name: { type: "string", description: "New project name" }
+        project: { type: "string", description: "Project to update (ID or name)" },
+        name: { type: "string", description: "New name" },
+        parentId: { type: "string", description: "New parent project ID" },
+        color: { type: "string", description: "New color" },
+        view: { type: "string", description: "New view style" },
+        favorite: { type: "boolean", description: "Toggle favorite status" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["project_id"]
+      required: ["project"]
     }
   },
+  
+  // Section tools
   {
-    name: "todoist_move_project",
-    description: "Move a project to a different parent",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_id: { type: "string", description: "Project ID to move" },
-        parent_id: { type: "string", description: "New parent project ID" }
-      },
-      required: ["project_id"]
-    }
-  },
-  {
-    name: "todoist_list_sections",
-    description: "List sections in a project",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_id: { type: "string", description: "Project ID to list sections from" }
-      },
-      required: ["project_id"]
-    }
-  },
-  {
-    name: "todoist_add_section",
+    name: "todoist_section_add",
     description: "Add a new section to a project",
     inputSchema: {
       type: "object",
       properties: {
-        name: { type: "string", description: "Section name" },
-        project_id: { type: "string", description: "Project ID to add section to" }
+        name: { type: "string", description: "Section name (required)" },
+        projectId: { type: "string", description: "Project ID to add section to (required)" },
+        order: { type: "string", description: "Section order (optional)" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["name", "project_id"]
+      required: ["name", "projectId"]
     }
   },
   {
-    name: "todoist_remove_section",
+    name: "todoist_section_bulk_add",
+    description: "Add multiple sections to a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        names: { type: "string", description: "Section names (space-separated, use quotes)" },
+        projectId: { type: "string", description: "Project ID to add sections to (required)" },
+        startOrder: { type: "string", description: "Starting order (will increment for each section)" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["names", "projectId"]
+    }
+  },
+  {
+    name: "todoist_section_update",
+    description: "Update an existing section",
+    inputSchema: {
+      type: "object",
+      properties: {
+        section: { type: "string", description: "Section ID to update (required)" },
+        name: { type: "string", description: "New section name" },
+        projectId: { type: "string", description: "Move to project ID" },
+        order: { type: "string", description: "New section order" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["section"]
+    }
+  },
+  {
+    name: "todoist_section_remove",
     description: "Remove a section from a project",
     inputSchema: {
       type: "object",
       properties: {
-        section_id: { type: "string", description: "Section ID to remove" }
+        section: { type: "string", description: "Section ID to remove (required)" },
+        force: { type: "boolean", description: "Force removal even if section contains tasks" },
+        json: { type: "boolean", description: "Output in JSON format" }
       },
-      required: ["section_id"]
+      required: ["section"]
+    }
+  },
+  {
+    name: "todoist_section_bulk_remove",
+    description: "Remove multiple sections from a project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sections: { type: "string", description: "Section IDs to remove (space-separated)" },
+        force: { type: "boolean", description: "Force removal even if sections contain tasks" },
+        continueOnError: { type: "boolean", description: "Continue if some sections are not found" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["sections"]
+    }
+  },
+  
+  // Status tools
+  {
+    name: "todoist_status_karma",
+    description: "View karma statistics and life goals breakdown",
+    inputSchema: {
+      type: "object",
+      properties: {
+        json: { type: "boolean", description: "Output in JSON format with detailed statistics" }
+      }
+    }
+  },
+  {
+    name: "todoist_status_completed",
+    description: "View completed tasks with life goals statistics",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Filter by project ID" },
+        since: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        until: { type: "string", description: "End date (YYYY-MM-DD)" },
+        limit: { type: "string", description: "Maximum number of tasks to return" },
+        offset: { type: "string", description: "Number of tasks to skip" },
+        json: { type: "boolean", description: "Output in JSON format with life goals statistics" }
+      }
     }
   }
 ];
 
-// Tool execution mapping
-const TOOL_MAPPING: { [key: string]: string } = {
-  todoist_list_tasks: 'list-tasks.js',
-  todoist_add_task: 'add-task.js',
-  todoist_update_task: 'update-task.js',
-  todoist_move_task: 'move-task.js',
-  todoist_auto_tagger: 'auto-tagger.js',
-  todoist_list_labels: 'list-labels.js',
-  todoist_add_comment: 'add-comment.js',
-  todoist_list_projects: 'list-projects.js',
-  todoist_add_project: 'add-project.js',
-  todoist_update_project: 'update-project.js',
-  todoist_move_project: 'move-project.js',
-  todoist_list_sections: 'list-sections.js',
-  todoist_add_section: 'add-section.js',
-  todoist_remove_section: 'remove-section.js'
+// Tool execution mapping to actual script files
+const TOOL_MAPPING: { [key: string]: { script: string, subcommand?: string } } = {
+  // Find tool
+  todoist_find: { script: 'find.js' },
+  
+  // List tools
+  todoist_list_tasks: { script: 'list.js', subcommand: 'tasks' },
+  todoist_list_projects: { script: 'list.js', subcommand: 'projects' },
+  todoist_list_sections: { script: 'list.js', subcommand: 'sections' },
+  
+  // Task tools
+  todoist_task_add: { script: 'task.js', subcommand: 'add' },
+  todoist_task_batch_add: { script: 'task.js', subcommand: 'batch-add' },
+  todoist_task_update: { script: 'task.js', subcommand: 'update' },
+  todoist_task_batch_update: { script: 'task.js', subcommand: 'batch-update' },
+  todoist_task_batch_move: { script: 'task.js', subcommand: 'batch-move' },
+  
+  // Project tools
+  todoist_project_add: { script: 'project.js', subcommand: 'add' },
+  todoist_project_bulk_add: { script: 'project.js', subcommand: 'bulk-add' },
+  todoist_project_update: { script: 'project.js', subcommand: 'update' },
+  
+  // Section tools
+  todoist_section_add: { script: 'section.js', subcommand: 'add' },
+  todoist_section_bulk_add: { script: 'section.js', subcommand: 'bulk-add' },
+  todoist_section_update: { script: 'section.js', subcommand: 'update' },
+  todoist_section_remove: { script: 'section.js', subcommand: 'remove' },
+  todoist_section_bulk_remove: { script: 'section.js', subcommand: 'bulk-remove' },
+  
+  // Status tools
+  todoist_status_karma: { script: 'status.js', subcommand: 'karma' },
+  todoist_status_completed: { script: 'status.js', subcommand: 'completed' }
 };
 
 async function runServer() {
@@ -240,7 +406,9 @@ async function runServer() {
   console.error(`Starting Todoist MCP Server at ${startTime}...`);
 
   // Set API token for child processes
-  process.env.TODOIST_API_TOKEN = 'fdebb665194ea019e3362061d94c4502678576a5';
+  if (!process.env.TODOIST_API_TOKEN) {
+    console.error("Warning: TODOIST_API_TOKEN environment variable not set. Please set it for the server to function properly.");
+  }
 
   // Create a map of tools for capabilities
   const toolsMap = TOOLS.reduce((acc, tool) => {
@@ -290,28 +458,54 @@ async function runServer() {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     console.error(`Received CallTool request for ${request.params.name}`);
-    const toolScript = TOOL_MAPPING[request.params.name];
-    if (!toolScript) {
+    const toolConfig = TOOL_MAPPING[request.params.name];
+    if (!toolConfig) {
       throw new Error(`Unknown tool: ${request.params.name}`);
     }
 
-    const toolPath = join(TOOLS_DIR, toolScript);
-    const args = Object.entries(request.params.arguments || {}).map(([key, value]) => 
-      typeof value === 'string' ? `--${key}=${value}` : `--${key}=${JSON.stringify(value)}`
-    );
+    const toolPath = join(TOOLS_DIR, toolConfig.script);
+    const useJson = request.params.arguments?.json === true;
+    
+    // Prepare arguments for the tool
+    const args: string[] = [];
+    
+    // Add subcommand if present
+    if (toolConfig.subcommand) {
+      args.push(toolConfig.subcommand);
+    }
+    
+    // Process arguments based on the tool's expected format
+    for (const [key, value] of Object.entries(request.params.arguments || {})) {
+      // Skip the json flag as we'll add it separately if needed
+      if (key === 'json') continue;
+      
+      if (typeof value === 'boolean') {
+        // For boolean flags, just add --flag-name without a value if true
+        if (value === true) {
+          args.push(`--${key}`);
+        }
+      } else if (typeof value === 'string') {
+        // For string values, add as --key=value or --key "value" depending on command
+        if (key === 'filter' || key === 'tasks' || key === 'names' || key === 'taskIds' || key === 'sections' || 
+            key === 'labels' || key === 'add-labels' || key === 'remove-labels') {
+          // These parameters need to be quoted
+          args.push(`--${key}`, `${value}`);
+        } else {
+          args.push(`--${key}=${value}`);
+        }
+      }
+    }
 
     try {
-      const result = await executeTool(toolPath, args);
-      console.error('Tool returned:', result);
+      const result = await executeTool(toolPath, args, useJson);
+      console.error('Tool returned:', typeof result === 'string' ? result.substring(0, 100) + '...' : result);
       
       let formattedText;
       if (typeof result === 'string') {
         formattedText = result;
       } else if (Array.isArray(result)) {
-        formattedText = result.map(project => 
-          `${project.name} (ID: ${project.id})${project.sections?.length ? `\n  Sections: ${project.sections.map((s: { name: string }) => s.name).join(', ')}` : ''}`
-        ).join('\n');
-      } else if (result.message) {
+        formattedText = JSON.stringify(result, null, 2);
+      } else if (result && result.message) {
         formattedText = result.message;
       } else {
         formattedText = JSON.stringify(result, null, 2);
@@ -326,7 +520,7 @@ async function runServer() {
         }
       };
 
-      console.error('Sending response:', response);
+      console.error('Sending response:', typeof formattedText === 'string' ? formattedText.substring(0, 100) + '...' : formattedText);
       return response;
     } catch (error) {
       console.error('Tool error:', error);
