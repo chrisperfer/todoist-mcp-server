@@ -6,6 +6,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
@@ -15,6 +17,26 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const TOOLS_DIR = join(__dirname, '..', 'tools', 'todoist');
+
+// Define Resource interface
+interface Resource {
+  uri: string;
+  name: string;
+  description: string;
+  mimeType: string;
+  content: string;
+}
+
+// Test resource for todoist_find
+const TEST_RESOURCES: Record<string, Resource> = {
+  "todoist_find/secret": {
+    uri: "todoist_find/secret",
+    name: "Secret Number",
+    description: "A test resource containing a secret number",
+    mimeType: "text/plain",
+    content: "The secret number is 10"
+  }
+};
 
 // Helper function to execute tool and return JSON result
 async function executeTool(toolPath: string, args: string[] = [], useJson: boolean = false): Promise<any> {
@@ -430,7 +452,8 @@ async function runServer() {
     },
     {
       capabilities: {
-        tools: toolsMap
+        tools: toolsMap,
+        resources: {}
       }
     }
   );
@@ -573,6 +596,36 @@ async function runServer() {
       console.error('Sending error response:', errorResponse);
       return errorResponse;
     }
+  });
+
+  // Add resource request handlers
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    console.error("Received ListResources request");
+    return {
+      resources: Object.values(TEST_RESOURCES).map(({ uri, name, description, mimeType }) => ({
+        uri,
+        name,
+        description,
+        mimeType
+      }))
+    };
+  });
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    console.error(`Received ReadResource request for ${request.params.uri}`);
+    const resource = TEST_RESOURCES[request.params.uri];
+    if (!resource) {
+      throw new Error(`Resource not found: ${request.params.uri}`);
+    }
+    return {
+      contents: [{
+        uri: resource.uri,
+        mimeType: resource.mimeType,
+        name: resource.name,
+        type: "text",
+        text: resource.content
+      }]
+    };
   });
 
   const transport = new StdioServerTransport();
