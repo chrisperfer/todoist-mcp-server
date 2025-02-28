@@ -35,6 +35,434 @@ const TEST_RESOURCES: Record<string, Resource> = {
     description: "A test resource containing a secret number",
     mimeType: "text/plain",
     content: "The secret number is 10"
+  },
+  "todoist_find/help": {
+    uri: "todoist_find/help",
+    name: "Todoist Find Help",
+    description: "Help documentation and examples for the todoist_find tool",
+    mimeType: "text/markdown",
+    content: `# Todoist Find Tool Help
+
+## Overview
+The find tool allows you to search and filter Todoist tasks using powerful query syntax.
+
+## Basic Usage
+\`\`\`
+todoist_find "your_query"  # Basic search
+todoist_find "your_query" --json  # Get detailed JSON output
+todoist_find "your_query" --ids   # Get task IDs for batch operations
+\`\`\`
+
+## Query Syntax Examples
+- Find tasks in a project: \`p:ProjectName\`
+- Find tasks with a label: \`@label\`
+- Find tasks due today: \`today\`
+- Find overdue tasks: \`overdue\`
+- Find tasks without a date: \`no date\`
+- Find tasks without labels: \`no labels\`
+- Text search: \`search:meeting\`
+
+## Combining Filters
+- AND operator: \`p:ProjectName & @label\`
+- OR operator: \`today | tomorrow\`
+- Complex queries: \`p:Work & @important & search:meeting\`
+
+## Common Use Cases
+1. Find all tasks in FLOOBY project with test label:
+   \`todoist_find "p:FLOOBY & @test"\`
+
+2. Get IDs of all overdue tasks for batch update:
+   \`todoist_find "overdue" --ids\`
+
+3. Find tasks due this week with detailed info:
+   \`todoist_find "due: today .. 7 days" --json\`
+
+4. Search across all projects:
+   \`todoist_find "search:important meeting"\`
+
+## Best Practices
+- Use quotes around queries with spaces or special characters
+- Use --ids flag when planning batch operations
+- Use --json flag when you need detailed task information
+- Combine multiple conditions for precise filtering
+- Test complex queries in parts before combining
+
+## Tips
+- Queries are case-insensitive
+- Use parentheses for complex logical grouping
+- The search: prefix does partial word matching
+- Label queries work with or without the @ symbol
+- Project queries work with or without the p: prefix`
+  },
+  "todoist_list/help": {
+    uri: "todoist_list/help",
+    name: "Todoist List Help",
+    description: "Help documentation and examples for the todoist_list tools",
+    mimeType: "text/markdown",
+    content: `# Todoist List Tools Help
+
+## Overview
+The list tools provide commands for listing and filtering tasks, projects, and sections in your Todoist workspace.
+
+## Commands
+- \`tasks\`: List and filter tasks
+- \`projects\`: List and filter projects
+- \`sections\`: List and filter sections
+
+## Global Options
+- \`--json\`: Output in JSON format
+- \`--help\`: Show help message
+
+## Task Listing
+### Options
+- \`--filter <filter>\`: Use Todoist filter query (e.g., "today", "#Project 📁")
+- \`--taskId <id>\`: Get detailed information for a specific task
+
+### Examples
+\`\`\`bash
+list tasks --filter "today"
+list tasks --filter "#FLOOBY 🐒"  # Include emoji if project has one
+list tasks --filter "p:Work & !p:Work/Archive"
+list tasks --taskId 123456789
+\`\`\`
+
+## Project Listing
+### Options
+- \`--filter <text>\`: Filter projects by name
+- \`--projectId <id>\`: Get detailed information for a specific project
+- \`--data\`: Include tasks, sections, and notes (use with --projectId)
+- \`--info\`: Include only project info and notes (use with --projectId)
+
+### Examples
+\`\`\`bash
+list projects --filter "FLOOBY 🐒"  # Include emoji if project has one
+list projects --projectId 123456789 --data
+list projects --projectId 123456789 --info
+\`\`\`
+
+## Section Listing
+### Options
+- \`--projectId <id>\`: Filter sections by project ID
+- \`--filter <filter>\`: Filter sections by name or project
+
+### Examples
+\`\`\`bash
+list sections --filter "p:FLOOBY 🐒"  # Include emoji if project has one
+list sections --filter "Meeting"
+\`\`\`
+
+## Important Notes
+- When filtering by project name, include any emojis that are part of the project name
+- Use \`--json\` flag for programmatic access to data
+- Project and section IDs are more reliable than names for targeting
+- Combine filters for more precise results
+- The filter syntax follows Todoist's query format`
+  },
+  "todoist_section/help": {
+    uri: "todoist_section/help",
+    name: "Todoist Section Help",
+    description: "Help documentation and examples for the todoist_section tools",
+    mimeType: "text/markdown",
+    content: `# Todoist Section Tools Help
+
+## Overview
+The section tools allow you to manage sections within your Todoist projects, including adding, updating, and removing sections.
+
+## Commands
+
+### Add Section
+Add a new section to a project.
+
+\`\`\`bash
+section add "Planning 📋" --projectId "2349336695"
+section add "Sprint Backlog 📥" --projectId "2349336695" --order 1
+\`\`\`
+
+#### Options
+- \`name\`: Section name (required)
+- \`--projectId\`: Project ID to add section to (required)
+- \`--order\`: Section order (optional)
+- \`--json\`: Output in JSON format
+
+### Bulk Add Sections
+Add multiple sections to a project at once.
+
+\`\`\`bash
+section bulk-add --names "Sprint 1 🏃" "Sprint 2 🏃" --projectId "2349336695"
+section bulk-add --names "Todo 📋" "In Progress 🔄" "Done ✅" --projectId "2349336695" --start-order 1
+\`\`\`
+
+#### Options
+- \`--names\`: Section names (space-separated, use quotes for multi-word names)
+- \`--projectId\`: Project ID to add sections to (required)
+- \`--startOrder\`: Starting order for sections (will increment for each section)
+- \`--json\`: Output in JSON format
+
+### Update Section
+Update an existing section's properties.
+
+\`\`\`bash
+section update "183758533" --name "Active Sprint 🏃" --order 1
+section update "183758533" --projectId "2349336695"
+\`\`\`
+
+#### Options
+- \`section\`: Section ID to update (required)
+- \`--name\`: New section name
+- \`--projectId\`: Move to project ID
+- \`--order\`: New section order
+- \`--json\`: Output in JSON format
+
+### Remove Section
+Remove a section from a project.
+
+\`\`\`bash
+section remove --section "183758533" --force
+\`\`\`
+
+#### Options
+- \`--section\`: Section ID to remove (required)
+- \`--force\`: Force removal even if section contains tasks
+- \`--json\`: Output in JSON format
+
+### Bulk Remove Sections
+Remove multiple sections at once.
+
+\`\`\`bash
+section bulk-remove --sections "183758533" "183758534" --force
+\`\`\`
+
+#### Options
+- \`--sections\`: Section IDs to remove (space-separated)
+- \`--force\`: Force removal even if sections contain tasks
+- \`--continueOnError\`: Continue if some sections are not found
+- \`--json\`: Output in JSON format
+
+## Important Notes
+- Section operations use the Sync API for better reliability
+- Tasks in deleted sections are preserved by moving them to the project root
+- Use --force to remove sections containing tasks
+- Section IDs are recommended over names for more reliable targeting
+- The order parameter determines section position (lower numbers appear first)
+- When moving tasks between sections, task metadata is preserved`
+  },
+  "todoist_status/help": {
+    uri: "todoist_status/help",
+    name: "Todoist Status Help",
+    description: "Help documentation and examples for the todoist_status tools",
+    mimeType: "text/markdown",
+    content: `# Todoist Status Tools Help
+
+## Overview
+The status tools provide insights into your Todoist productivity and task completion metrics, including karma statistics and completed tasks analysis.
+
+## Commands
+
+### Karma Statistics
+View your karma score and productivity trends.
+
+\`\`\`bash
+status karma
+status karma --json  # Get detailed statistics in JSON format
+\`\`\`
+
+#### Features
+- View current karma score
+- Track daily and weekly goals
+- Monitor productivity streaks
+- Analyze karma trends
+- View life goals distribution
+
+### Completed Tasks
+View and analyze completed tasks with filtering options.
+
+\`\`\`bash
+status completed
+status completed --since "2024-01-01" --until "2024-03-31"
+status completed --projectId "2349336695"
+status completed --json  # Get life goals statistics
+\`\`\`
+
+#### Options
+- \`--projectId\`: Filter by project ID
+- \`--since\`: Start date (YYYY-MM-DD)
+- \`--until\`: End date (YYYY-MM-DD)
+- \`--limit\`: Maximum number of tasks to return
+- \`--offset\`: Number of tasks to skip
+- \`--json\`: Output in JSON format with life goals statistics
+
+## Life Goals Tracking
+The status tools help monitor your progress across different life areas:
+
+- Tasks are categorized by life goals based on project names
+- View completion percentages by life goal
+- Track task distribution across life areas
+- Monitor goal achievement rates
+- Note: Inbox tasks are excluded from life goals stats
+
+## Best Practices
+1. Regular Review
+   - Check karma stats daily for momentum
+   - Review completed tasks weekly
+   - Monitor life goals distribution monthly
+   - Track productivity streaks
+
+2. Data Analysis
+   - Use date filters for specific periods
+   - Compare completion rates across projects
+   - Analyze task distribution patterns
+   - Use JSON output for detailed analysis
+
+3. Goal Setting
+   - Set realistic daily and weekly goals
+   - Balance tasks across life areas
+   - Monitor streak information
+   - Adjust goals based on trends
+
+## Tips
+- Use date ranges to analyze specific periods
+- Compare completion rates across projects
+- Monitor life goals distribution regularly
+- Track karma trends for productivity insights
+- Use JSON output for data analysis and reporting`
+  },
+  "todoist_task/help": {
+    uri: "todoist_task/help",
+    name: "Todoist Task Help",
+    description: "Help documentation and examples for the todoist_task tools",
+    mimeType: "text/markdown",
+    content: `# Todoist Task Tools Help
+
+## Overview
+The task tools provide comprehensive functionality for managing tasks in Todoist, including adding, updating, moving, and batch operations.
+
+## Commands
+
+### Add Task
+Add a new task to Todoist.
+
+\`\`\`bash
+task add --content "Review project plan 📋" --projectId "2349336695"
+task add --content "Weekly meeting" --description "Team sync-up" --due-string "every monday at 10am" --priority 3
+\`\`\`
+
+#### Options
+- \`--content\`: Task content (required)
+- \`--description\`: Task description
+- \`--projectId\`: Project ID to add task to
+- \`--sectionId\`: Section ID to add task to
+- \`--parentId\`: Parent task ID for subtasks
+- \`--priority\`: Task priority (1-4)
+- \`--due-string\`: Due date as text
+- \`--due-date\`: Due date (YYYY-MM-DD)
+- \`--labels\`: Labels (space-separated)
+- \`--json\`: Output in JSON format
+
+### Batch Add Tasks
+Add multiple tasks at once.
+
+\`\`\`bash
+task batch-add --tasks "Task 1" "Task 2" "Task 3" --projectId "2349336695"
+task batch-add --tasks "Sprint planning" "Team review" --due-string "next monday" --labels "meeting team"
+\`\`\`
+
+#### Options
+- \`--tasks\`: Task contents (space-separated, use quotes)
+- \`--projectId\`: Project to add tasks to
+- \`--sectionId\`: Section to add tasks to
+- \`--parentId\`: Parent task ID for subtasks
+- \`--priority\`: Task priority (1-4)
+- \`--due-string\`: Due date as text
+- \`--due-date\`: Due date (YYYY-MM-DD)
+- \`--labels\`: Labels (space-separated)
+- \`--json\`: Output in JSON format
+
+### Update Task
+Update an existing task's properties.
+
+\`\`\`bash
+task update --taskId "1234567890" --content "Updated task name" --priority 4
+task update --taskId "1234567890" --add-labels "important urgent" --due-string "tomorrow"
+\`\`\`
+
+#### Options
+- \`--taskId\`: Task ID to update (required)
+- \`--content\`: New content
+- \`--description\`: New description
+- \`--priority\`: New priority (1-4)
+- \`--due-string\`: New due date as text
+- \`--due-date\`: New due date (YYYY-MM-DD)
+- \`--labels\`: Set labels (space-separated)
+- \`--add-labels\`: Add to existing labels
+- \`--remove-labels\`: Remove from existing labels
+- \`--complete\`: Mark as complete
+- \`--json\`: Output in JSON format
+
+### Batch Update Tasks
+Update multiple tasks at once.
+
+\`\`\`bash
+task batch-update --taskIds "123 456 789" --priority 4 --add-labels "urgent"
+task batch-update --taskIds "123 456 789" --complete true
+\`\`\`
+
+#### Options
+- \`--taskIds\`: Task IDs to update (space-separated)
+- \`--content\`: New content
+- \`--description\`: New description
+- \`--priority\`: New priority (1-4)
+- \`--due-string\`: New due date as text
+- \`--due-date\`: New due date (YYYY-MM-DD)
+- \`--labels\`: Set labels (space-separated)
+- \`--add-labels\`: Add to existing labels
+- \`--remove-labels\`: Remove from existing labels
+- \`--complete\`: Mark as complete
+- \`--json\`: Output in JSON format
+
+### Batch Move Tasks
+Move multiple tasks to a new project, section, or parent task.
+
+\`\`\`bash
+task batch-move --taskIds "123 456 789" --to-project-id "2349336695"
+task batch-move --taskIds "123 456 789" --to-section-id "12345"
+\`\`\`
+
+#### Options
+- \`--taskIds\`: Task IDs to move (space-separated)
+- \`--to-project-id\`: Move to project
+- \`--to-section-id\`: Move to section
+- \`--to-parent-id\`: Move as subtask of parent
+- \`--json\`: Output in JSON format
+
+## Best Practices
+1. Task Creation
+   - Use clear, actionable task names
+   - Add relevant details in descriptions
+   - Set appropriate priorities
+   - Use consistent labeling
+   - Organize with sections and projects
+
+2. Batch Operations
+   - Use find.js to get task IDs
+   - Test updates on single tasks first
+   - Verify results after batch operations
+   - Use --json for detailed feedback
+   - Keep task metadata consistent
+
+3. Task Organization
+   - Use parent-child relationships
+   - Leverage sections for grouping
+   - Maintain consistent labeling
+   - Set realistic due dates
+   - Use priorities effectively
+
+## Tips
+- Use IDs instead of names for reliability
+- Combine with find.js for complex operations
+- Verify changes after batch updates
+- Keep consistent naming conventions
+- Use emojis for visual organization
+- Leverage the Sync API's capabilities`
   }
 };
 
@@ -443,7 +871,19 @@ async function runServer() {
     return acc;
   }, {} as Record<string, Tool>);
 
+  // Create a map of resources for capabilities
+  const resourcesMap = Object.values(TEST_RESOURCES).reduce((acc, resource) => {
+    acc[resource.uri] = {
+      uri: resource.uri,
+      name: resource.name,
+      description: resource.description,
+      mimeType: resource.mimeType
+    };
+    return acc;
+  }, {} as Record<string, { uri: string; name: string; description: string; mimeType: string }>);
+
   console.error(`Registering ${Object.keys(toolsMap).length} tools: ${Object.keys(toolsMap).join(", ")}`);
+  console.error(`Registering ${Object.keys(resourcesMap).length} resources: ${Object.keys(resourcesMap).join(", ")}`);
 
   const server = new Server(
     {
@@ -453,7 +893,7 @@ async function runServer() {
     {
       capabilities: {
         tools: toolsMap,
-        resources: {}
+        resources: resourcesMap
       }
     }
   );

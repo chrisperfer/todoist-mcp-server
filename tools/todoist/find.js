@@ -14,7 +14,10 @@ const HELP = {
     'find.js "@work & p:FLOOBY"      # Find work-labeled tasks in FLOOBY project',
     'find.js "no date & p:FLOOBY"    # Find tasks without dates in project',
     'find.js "overdue & @urgent"     # Find overdue tasks with urgent label',
-    'find.js "p:FLOOBY & no labels"  # Find tasks without labels in project'
+    'find.js "p:FLOOBY & no labels"  # Find tasks without labels in project',
+    'find.js "p:FLOOBY & /Planning"  # Find tasks in Planning section of FLOOBY project',
+    'find.js "p:FLOOBY & !/Planning" # Find tasks NOT in Planning section of FLOOBY project',
+    'find.js "p:FLOOBY & (/Planning | /Development)" # Find tasks in either section'
   ],
   options: {
     '--ids': 'Output task IDs in format suitable for batch commands',
@@ -29,6 +32,8 @@ const HELP = {
     '  - no labels       Tasks without labels',
     '  - overdue         Overdue tasks',
     '  - today           Due today',
+    '  - /SectionName    Tasks in specific section',
+    '  - !/SectionName   Tasks NOT in specific section',
     '  - &               Combine filters (AND)',
     '  - |               Combine filters (OR)',
     '',
@@ -36,6 +41,7 @@ const HELP = {
     '  - Always use search:text for text searches instead of raw text',
     '  - Combine filters with & (AND) or | (OR)',
     '  - Project names are case-sensitive and must match exactly',
+    '  - Section filters use /SectionName syntax, not s:SectionName',
     '  - Use quotes around filters with spaces',
     '',
     'Output Options:',

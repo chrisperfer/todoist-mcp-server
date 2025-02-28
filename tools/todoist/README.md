@@ -122,6 +122,11 @@ node tools/todoist/find.js "today | tomorrow"      # Find tasks due today or tom
 node tools/todoist/find.js "search: meeting"       # Find tasks containing "meeting"
 node tools/todoist/find.js "@work & p:FLOOBY"     # Find work-labeled tasks in FLOOBY project
 
+# Section filtering
+node tools/todoist/find.js "p:FLOOBY & /Planning"  # Find tasks in Planning section of FLOOBY project
+node tools/todoist/find.js "p:FLOOBY & !/Planning" # Find tasks NOT in Planning section
+node tools/todoist/find.js "p:FLOOBY & (/Planning | /Development)" # Find tasks in either section
+
 # Integration with batch commands
 node tools/todoist/find.js "overdue" --ids | xargs node tools/todoist/task.js batch-update --taskIds --priority 1
 node tools/todoist/find.js "p:FLOOBY & @test" --ids | xargs node tools/todoist/task.js batch-move --taskIds --to-section-id 789
@@ -133,6 +138,10 @@ Notes:
 - The --ids option outputs IDs in a format ready for batch commands
 - The --json option includes project paths and section names in the output
 - Cannot use both --ids and --json options together
+- Section filtering uses /SectionName syntax (not s:SectionName)
+- Use !/SectionName to exclude tasks from a specific section
+- Combine section filters with parentheses and | for OR operations
+- For detailed section filtering documentation, see: [Section Filtering Guide](docs/section-filtering.md)
 ```
 
 #### Batch Move Tasks
