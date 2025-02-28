@@ -856,10 +856,7 @@ async function runServer() {
   console.error(`Starting Todoist MCP Server at ${startTime}...`);
 
   // Set API token for child processes
-  if (!process.env.TODOIST_API_TOKEN) {
-    console.error("Warning: TODOIST_API_TOKEN environment variable not set. Setting it manually for this session.");
-    process.env.TODOIST_API_TOKEN = "fdebb665194ea019e3362061d94c4502678576a5";
-  }
+ 
 
   // Create a map of tools for capabilities
   const toolsMap = TOOLS.reduce((acc, tool) => {
