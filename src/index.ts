@@ -463,6 +463,89 @@ task batch-move --taskIds "123 456 789" --to-section-id "12345"
 - Keep consistent naming conventions
 - Use emojis for visual organization
 - Leverage the Sync API's capabilities`
+  },
+  "todoist_note/help": {
+    uri: "todoist_note/help",
+    name: "Todoist Note Help",
+    description: "Help documentation and examples for the todoist_note tools",
+    mimeType: "text/markdown",
+    content: `# Todoist Note Tools Help
+
+## Overview
+The note tools provide functionality for adding notes (comments) to tasks and projects in Todoist, including batch operations for adding the same note to multiple items.
+
+## Commands
+
+### Add Note
+Add a note to a task or project.
+
+\`\`\`bash
+note add --taskId "8908564449" --content "Important information about this task"
+note add --projectId "2349336695" --content "Project status update: on track"
+note add "Task name" --content "Note content"  # Find by name
+\`\`\`
+
+#### Options
+- \`--taskId\`: Task ID to add note to
+- \`--projectId\`: Project ID to add note to
+- \`--content\`: Note content (required)
+- \`--json\`: Output in JSON format
+
+### Batch Add Notes to Tasks
+Add the same note to multiple tasks at once.
+
+\`\`\`bash
+note batch-add --taskIds "8908564449" "8908564458" --content "This applies to all these tasks"
+\`\`\`
+
+#### Options
+- \`--taskIds\`: Task IDs to add note to (space-separated)
+- \`--content\`: Note content (required)
+- \`--json\`: Output in JSON format
+
+### Batch Add Notes to Projects
+Add the same note to multiple projects at once.
+
+\`\`\`bash
+note batch-add-project --projectIds "2349336695" "2349336696" --content "Status update for all projects"
+\`\`\`
+
+#### Options
+- \`--projectIds\`: Project IDs to add note to (space-separated)
+- \`--content\`: Note content (required)
+- \`--json\`: Output in JSON format
+
+## Important Notes
+- Notes are added using the Sync API for better reliability and performance
+- When adding notes to multiple items, all operations are batched in a single API call
+- Task and project IDs are more reliable than names for targeting
+- The script can find tasks and projects by name if IDs are not provided
+- Use --json flag for programmatic access to data
+
+## Best Practices
+1. Note Creation
+   - Keep notes concise and focused
+   - Use clear formatting for readability
+   - Include relevant context in each note
+   - Consider using emojis for visual organization
+
+2. Batch Operations
+   - Use find.js to get task IDs for batch operations
+   - Verify results after batch operations
+   - Use --json for detailed feedback
+   - Keep note content consistent across related items
+
+3. Finding Items
+   - Use IDs whenever possible for reliability
+   - When searching by name, use unique identifiers
+   - Combine with list.js to find specific items
+   - Verify the correct items are targeted before adding notes
+
+## Tips
+- Notes can be used for status updates, clarifications, or additional context
+- Batch operations are more efficient than individual API calls
+- The Sync API ensures consistent and reliable note creation
+- Use JSON output for integration with other tools or scripts`
   }
 };
 
@@ -814,6 +897,47 @@ const TOOLS: Tool[] = [
         json: { type: "boolean", description: "Output in JSON format with life goals statistics" }
       }
     }
+  },
+  // Note tools
+  {
+    name: "todoist_note_add",
+    description: "Add a note to a task or project",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string", description: "Task ID to add note to" },
+        projectId: { type: "string", description: "Project ID to add note to" },
+        content: { type: "string", description: "Note content (required)" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["content"]
+    }
+  },
+  {
+    name: "todoist_note_batch_add",
+    description: "Add the same note to multiple tasks",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskIds: { type: "string", description: "Task IDs to add note to (space-separated)" },
+        content: { type: "string", description: "Note content (required)" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["taskIds", "content"]
+    }
+  },
+  {
+    name: "todoist_note_batch_add_project",
+    description: "Add the same note to multiple projects",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectIds: { type: "string", description: "Project IDs to add note to (space-separated)" },
+        content: { type: "string", description: "Note content (required)" },
+        json: { type: "boolean", description: "Output in JSON format" }
+      },
+      required: ["projectIds", "content"]
+    }
   }
 ];
 
@@ -848,7 +972,11 @@ const TOOL_MAPPING: { [key: string]: { script: string, subcommand?: string } } =
   
   // Status tools
   todoist_status_karma: { script: 'status.js', subcommand: 'karma' },
-  todoist_status_completed: { script: 'status.js', subcommand: 'completed' }
+  todoist_status_completed: { script: 'status.js', subcommand: 'completed' },
+  // Note tools
+  todoist_note_add: { script: 'note.js', subcommand: 'add' },
+  todoist_note_batch_add: { script: 'note.js', subcommand: 'batch-add' },
+  todoist_note_batch_add_project: { script: 'note.js', subcommand: 'batch-add-project' }
 };
 
 async function runServer() {
@@ -951,7 +1079,8 @@ async function runServer() {
           (toolConfig.script === 'section.js' && toolConfig.subcommand === 'bulk-add' && key === 'names') ||
           (toolConfig.script === 'project.js' && toolConfig.subcommand === 'bulk-add' && key === 'names') ||
           (toolConfig.script === 'task.js' && toolConfig.subcommand === 'batch-add' && key === 'tasks') ||
-          (key === 'taskIds' || key === 'sections')
+          (key === 'taskIds' || key === 'sections' || key === 'projectIds') ||
+          (toolConfig.script === 'note.js' && toolConfig.subcommand === 'batch-add-project' && key === 'projectIds')
         );
         
         if (needsArrayTransformation) {
